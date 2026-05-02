@@ -8,7 +8,6 @@ from .types import (
     ChunkId,
     LogEntry,
     Predicate,
-    PredicateOp,
 )
 
 
@@ -37,7 +36,7 @@ class ChunkStore:
         self._open_chunk.append(entry)
 
         if self._should_seal(now):
-            self._self_open_chunk()
+            self._seal_open_chunk()
 
     def _should_seal(self, now: float) -> bool:
         c = self._open_chunk

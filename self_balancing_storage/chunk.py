@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -55,7 +54,7 @@ class Chunk:
         return cls(
             header=ChunkHeader(
                 chunk_id=chunk_id,
-                seq=seq,
+                seq_id=seq,
                 ts_min=now,
                 ts_max=now,
             ),

@@ -7,7 +7,7 @@ import mmh3
 from bitarray import bitarray
 
 from ..chunk import _extract_field
-from ..types import ChunkId, IndexId, IndexType, LogEntry, PredicateOp
+from ..types import ChunkId, IndexType, LogEntry, PredicateOp
 from .base import make_index_id
 
 
