@@ -70,13 +70,6 @@ class DecisionEngine:
     async def stop(self) -> None:
         self._stop_event.set()
 
-    async def on_chunk_sealed(self, chunk_id: ChunkId) -> None:
-        # Lightweight hook for now; the heavy work happens in _tick
-        logger.info(
-            "chunk_sealed",
-            extra={"event": "chunk_sealed", "chunk_id": chunk_id},
-        )
-
     async def _tick(self) -> None:
         view = self._make_tracker_view()
         actions: list[Action] = []

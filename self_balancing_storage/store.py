@@ -1,6 +1,5 @@
 from __future__ import annotations
 import time
-from typing import Awaitable, Callable
 
 from .chunk import Chunk
 from .config import Config
@@ -14,20 +13,15 @@ from .types import (
 )
 
 
-SealCallback = Callable[[ChunkId], Awaitable[None]]
-
-
 class ChunkStore:
     def __init__(
         self,
         config: Config,
-        on_chunk_sealed: SealCallback | None = None,
     ):
         self.config = config
         self.chunks: list[Chunk] = []
         self._open_chunk: Chunk | None = None
         self._next_seq = 1
-        self._on_chunk_sealed = on_chunk_sealed
 
     def append(self, entry: LogEntry, now: float | None = None) -> None:
         now = now if now is not None else time.time()
@@ -60,7 +54,6 @@ class ChunkStore:
         chunk = self._open_chunk
         chunk.seal()
         self._open_chunk = None
-        # Engine event hook is called externally (see runtime.py)
 
     def find(
         self,
@@ -89,11 +82,6 @@ class ChunkStore:
                 results.extend(_post_filter(chunk, positions, predicate))
 
         return results, scanned, used_indexes
-
-    def take_pending_seal(self) -> ChunkId | None:
-        """Drain: if a chunk was just sealed, return its id for the event hook."""
-        # implementation will be finalized in Phase 7 during engine wiring
-        return None
 
 
 def _chunk_in_range(chunk: Chunk, time_range: tuple[float, float] | None) -> bool:
