@@ -9,6 +9,8 @@ from .base import make_index_id
 
 
 class HashIndex:
+    precise = True
+
     def __init__(self, chunk_id: ChunkId, field: str):
         self.chunk_id = chunk_id
         self.field = field

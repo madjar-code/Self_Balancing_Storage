@@ -6,6 +6,9 @@ from .chunk import Chunk
 from .config import Config
 from .types import (
     ChunkId,
+    IndexId,
+    Predicate,
+    PredicateOp,
     LogEntry,
     Predicate,
 )
@@ -63,22 +66,29 @@ class ChunkStore:
         self,
         predicate: Predicate,
         time_range: tuple[float, float] | None = None,
-    ) -> tuple[list[LogEntry], list[ChunkId]]:
-        """
-        Returns (results, scanned_chunk_ids).
-        scanned_chunk_ids is needed to emit QueryEvent to Tracker.
-        """
+    ) -> tuple[list[LogEntry], list[ChunkId], list[IndexId]]:
         results: list[LogEntry] = []
         scanned: list[ChunkId] = []
+        used_indexes: list[IndexId] = []
 
         for chunk in self.chunks:
             if not _chunk_in_range(chunk, time_range):
                 continue
             scanned.append(chunk.header.chunk_id)
-            # scan-only for now; index integration comes in Phase 7
-            positions = chunk.scan(predicate)
-            results.extend(chunk.entries[i] for i in positions)
-        return results, scanned
+
+            idx = _pick_index(chunk, predicate)
+            if idx is None:
+                results.extend(chunk.entries[p] for p in chunk.scan(predicate))
+                continue
+
+            used_indexes.append(idx.index_id)
+            positions = idx.lookup(predicate.value)
+            if idx.precise:
+                results.extend(chunk.entries[p] for p in positions)
+            else:
+                results.extend(_post_filter(chunk, positions, predicate))
+
+        return results, scanned, used_indexes
 
     def take_pending_seal(self) -> ChunkId | None:
         """Drain: if a chunk was just sealed, return its id for the event hook."""
@@ -91,3 +101,28 @@ def _chunk_in_range(chunk: Chunk, time_range: tuple[float, float] | None) -> boo
         return True
     lo, hi = time_range
     return not (chunk.header.ts_max < lo or chunk.header.ts_min > hi)
+
+
+def _post_filter(
+    chunk: Chunk,
+    positions: list[int],
+    predicate: Predicate,
+) -> list[LogEntry]:
+    """Filter index-returned candidate positions through exact predicate match."""
+    return [
+        chunk.entries[pos]
+        for pos in positions
+        if Chunk._matches(chunk.entries[pos], predicate)
+    ]
+
+def _pick_index(chunk: Chunk, predicate: Predicate):
+    """Simple strategy: first index for the requested field with a compatible op."""
+    for idx in chunk.indexes.values():
+        if idx.field != predicate.field:
+            continue
+        if idx.op == predicate.op:
+            return idx
+        # Bloom can answer EQ via the whole chunk
+        if predicate.op == PredicateOp.EQ and idx.op == PredicateOp.EQ:
+            return idx
+    return None

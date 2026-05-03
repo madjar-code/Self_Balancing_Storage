@@ -14,6 +14,7 @@ class Index(Protocol):
     chunk_id: ChunkId
     field: str
     op: PredicateOp
+    precise: bool
 
     @property
     def memory_bytes(self) -> int: ...

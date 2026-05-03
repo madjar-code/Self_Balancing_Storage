@@ -9,6 +9,8 @@ from .base import make_index_id
 class SkipIndex:
     """Min/max skip index, specialized for the `ts` field."""
 
+    precise = False
+
     def __init__(self, chunk_id: ChunkId, block_size: int = 100):
         self.chunk_id = chunk_id
         self.field = "ts"

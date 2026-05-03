@@ -12,6 +12,8 @@ from .base import make_index_id
 
 
 class BloomFilter:
+    precise = False
+
     def __init__(self, n_items: int, fp_rate: float = 0.01):
         if n_items <= 0:
             n_items = 1
