@@ -44,6 +44,3 @@ class ChunkHeatmap:
     def remove(self, chunk_id: ChunkId) -> None:
         self._ema.pop(chunk_id, None)
         self._last_access.pop(chunk_id, None)
-
-
-### Написать тесты для primitives и heatmap
