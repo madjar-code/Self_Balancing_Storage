@@ -15,7 +15,7 @@ class Config:
     builds_per_tick: int = 3
 
     # === Index decisions ===
-    build_treshold_freq: int = 5
+    build_threshold_freq: int = 5
     min_temp_for_index: float = 0.3
     idle_drop_sec: float = 600.0
     cooldown_sec: float = 600.0
