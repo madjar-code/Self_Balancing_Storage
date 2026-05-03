@@ -9,7 +9,6 @@ from .types import (
     Predicate,
     PredicateOp,
     LogEntry,
-    Predicate,
 )
 
 
