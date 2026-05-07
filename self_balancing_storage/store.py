@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+from typing import Awaitable, Callable
 
 from .chunk import Chunk
 from .config import Config
@@ -12,13 +13,18 @@ from .types import (
 )
 
 
+SealCallback = Callable[[ChunkId], Awaitable[None]]
+
+
 class ChunkStore:
     def __init__(
         self,
         config: Config,
+        on_chunk_sealed: SealCallback | None = None,
     ):
         self.config = config
         self.chunks: list[Chunk] = []
+        self._on_chunk_sealed = on_chunk_sealed
         self._open_chunk: Chunk | None = None
         self._next_seq = 1
 
@@ -53,6 +59,9 @@ class ChunkStore:
         chunk = self._open_chunk
         chunk.seal()
         self._open_chunk = None
+        if self._on_chunk_sealed is not None:
+            import asyncio
+            asyncio.create_task(self._on_chunk_sealed(chunk.header.chunk_id))
 
     def find(
         self,
