@@ -93,8 +93,13 @@ def should_restore_dropped_index(
 ) -> bool:
     if (view.now - dropped.dropped_at) > config.cooldown_sec:
         return False
-    predicate = Predicate(field=dropped.field, op=dropped.op)
-    freq = view.predicate_freqs.get(predicate, 0)
+    # Sum frequencies across all (field, op) matches: predicate_freqs is keyed
+    # by full Predicate (incl. value), so a value-agnostic restore decision
+    # has to aggregate over matching keys.
+    freq = sum(
+        f for p, f in view.predicate_freqs.items()
+        if p.field == dropped.field and p.op == dropped.op
+    )
     return freq >= config.build_threshold_freq
 
 

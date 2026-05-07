@@ -55,6 +55,18 @@ def test_index_usage_counter_and_last_used():
     assert tracker.index_last_used("idx1") == 30.0
 
 
+def test_on_index_built_sets_last_used_without_incrementing_usage():
+    tracker = AccessTracker(Config())
+    tracker.on_index_built("idx1", now=42.0)
+    assert tracker.index_last_used("idx1") == 42.0
+    assert tracker.index_usage("idx1") == 0
+
+    # A subsequent real query should still increment usage normally.
+    tracker.on_index_use("idx1", now=43.0)
+    assert tracker.index_usage("idx1") == 1
+    assert tracker.index_last_used("idx1") == 43.0
+
+
 def test_memory_pressure_in_unit_range():
     tracker = AccessTracker(Config(max_memory_bytes=1024 * 1024))
     p = tracker.memory_pressure()

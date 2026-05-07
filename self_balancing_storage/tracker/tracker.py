@@ -65,6 +65,12 @@ class AccessTracker:
         self._index_usage[index_id] = self._index_usage.get(index_id, 0) + 1
         self._index_last_used[index_id] = now
 
+    def on_index_built(self, index_id: IndexId, now: float | None = None) -> None:
+        # Start the idle clock at creation time so a freshly-built index
+        # isn't immediately seen as idle=inf by should_drop_index.
+        # Does NOT count as usage (would distort ROI for never-queried indexes).
+        self._index_last_used[index_id] = now if now is not None else time.time()
+
     # === metrics for Engine ===
 
     def write_rate(self) -> float:

@@ -100,6 +100,7 @@ class DecisionEngine:
         actions.sort(key=lambda a: getattr(a, "priority", 99))
         budget = self.config.actions_per_tick_budget
         builds_count = 0
+        applied: list[str] = []
         for action in actions:
             if builds_count >= self.config.builds_per_tick and isinstance(action, (BuildIndexAction, RestoreIndexAction)):
                 continue
@@ -107,11 +108,51 @@ class DecisionEngine:
                 break
             try:
                 await self._apply(action)
+                applied.append(type(action).__name__)
                 if isinstance(action, (BuildIndexAction, RestoreIndexAction)):
                     builds_count += 1
                 budget -= 1
             except Exception:
                 logger.exception("action_failed", extra={"action": str(action)})
+
+        self._log_tick_summary(view, actions, applied)
+
+    def _log_tick_summary(
+        self,
+        view: TrackerView,
+        planned: list[Action],
+        applied: list[str],
+    ) -> None:
+        # DEBUG-level: useful for engine diagnostics; demo prints its own
+        # compact snapshot at INFO via the runtime/demo layer.
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        n_sealed = sum(1 for c in self.store.chunks if c.header.state.value == "sealed")
+        n_with_indexes = sum(1 for c in self.store.chunks if c.indexes)
+        top = [
+            (f"{p.field}|{p.op.value}={p.value!r}", f)
+            for p, f in view.top_predicates[:3]
+        ]
+        max_temp = max(view.chunk_temperatures.values(), default=0.0)
+        logger.debug(
+            "tick",
+            extra={
+                "event": "tick",
+                "write_rate": round(view.write_rate, 2),
+                "burst_ratio": round(view.burst_ratio, 2),
+                "is_burst": view.is_burst,
+                "in_burst_state": self.in_burst,
+                "mem_pressure": round(view.memory_pressure, 3),
+                "n_chunks": len(self.store.chunks),
+                "n_sealed": n_sealed,
+                "n_with_indexes": n_with_indexes,
+                "n_dropped": len(self.dropped_indexes),
+                "max_chunk_temp": round(max_temp, 3),
+                "top_preds": top,
+                "planned": len(planned),
+                "applied": applied,
+            },
+        )
 
     def _make_tracker_view(self) -> TrackerView:
         now = time.time()
@@ -245,6 +286,7 @@ class DecisionEngine:
         )
         idx.build(chunk.entries)
         chunk.indexes[idx.index_id] = idx
+        self.tracker.on_index_built(idx.index_id)
         logger.info(
             "decision",
             extra={
@@ -288,6 +330,7 @@ class DecisionEngine:
         idx.build(chunk.entries)
         chunk.indexes[idx.index_id] = idx
         self.dropped_indexes.pop(idx.index_id, None)
+        self.tracker.on_index_built(idx.index_id)
         logger.info(
             "decision",
             extra={

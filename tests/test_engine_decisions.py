@@ -138,6 +138,55 @@ def test_no_restore_after_cooldown_expired():
     assert should_restore_dropped_index(dropped, view, config) is False
 
 
+def test_restore_matches_value_keyed_predicates():
+    # Regression: predicate_freqs is keyed by full Predicate (incl. value),
+    # so restore must aggregate over (field, op) regardless of values.
+    config = Config(cooldown_sec=600, build_threshold_freq=5)
+    dropped = DroppedIndex(
+        "i1", "c1", "trace_id", PredicateOp.EQ, IndexType.BLOOM,
+        dropped_at=900, prior_usage=20,
+    )
+    view = base_view(
+        now=1000,
+        predicate_freqs={
+            Predicate("trace_id", PredicateOp.EQ, "trace-42"): 7,
+            Predicate("trace_id", PredicateOp.EQ, "trace-7"): 3,
+            Predicate("service", PredicateOp.EQ, "auth"): 50,  # noise
+        },
+    )
+    # 7 + 3 = 10 >= threshold 5
+    assert should_restore_dropped_index(dropped, view, config) is True
+
+
+def test_no_restore_when_aggregated_freq_below_threshold():
+    config = Config(cooldown_sec=600, build_threshold_freq=20)
+    dropped = DroppedIndex(
+        "i1", "c1", "trace_id", PredicateOp.EQ, IndexType.BLOOM,
+        dropped_at=900, prior_usage=20,
+    )
+    view = base_view(
+        now=1000,
+        predicate_freqs={
+            Predicate("trace_id", PredicateOp.EQ, "trace-42"): 5,
+            Predicate("trace_id", PredicateOp.EQ, "trace-7"): 5,
+        },
+    )
+    # 5 + 5 = 10 < threshold 20
+    assert should_restore_dropped_index(dropped, view, config) is False
+
+
+def test_no_drop_for_freshly_built_index_with_recorded_birth():
+    config = Config(idle_drop_sec=600.0, min_roi=10.0, mem_pressure_drop=0.7)
+    info = IndexInfo("i1", "c1", "trace_id", PredicateOp.EQ, IndexType.BLOOM, memory_bytes=200)
+    view = base_view(
+        now=1000,
+        index_last_used={"i1": 999.0},  # built 1 second ago
+        index_usage={"i1": 0},          # never queried
+        memory_pressure=0.3,
+    )
+    assert should_drop_index(info, view, config) is False
+
+
 # === plan_memory_relief ===
 
 def test_relief_no_action_below_threshold():
