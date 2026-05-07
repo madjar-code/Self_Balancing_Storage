@@ -11,6 +11,7 @@ from .types import (
     LogEntry,
     Predicate,
     PredicateOp,
+    Tier,
 )
 
 if TYPE_CHECKING:
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 @dataclass
 class ChunkHeader:
     chunk_id: ChunkId
-    seq_id: int
+    seq: int
     ts_min: float
     ts_max: float
     services: set[str] = field(default_factory=set)
@@ -28,6 +29,8 @@ class ChunkHeader:
     size_bytes: int = 0
     schema_sketch: dict[str, set[type]] = field(default_factory=dict)
     state: ChunkState = ChunkState.OPEN
+    indexes_on_disk: list[IndexId] = field(default_factory=list)
+    persisted_at: float | None = None
 
 
 def _entry_size(entry: LogEntry) -> int:
@@ -46,6 +49,7 @@ class Chunk:
     header: ChunkHeader
     entries: list[LogEntry] = field(default_factory=list)
     indexes: dict[IndexId, "Index"] = field(default_factory=dict)
+    tier: Tier = Tier.HOT
 
     @classmethod
     def new(cls, seq: int, now: float | None = None) -> Chunk:
@@ -54,7 +58,7 @@ class Chunk:
         return cls(
             header=ChunkHeader(
                 chunk_id=chunk_id,
-                seq_id=seq,
+                seq=seq,
                 ts_min=now,
                 ts_max=now,
             ),
