@@ -23,3 +23,6 @@ htmlcov/
 # Persistence
 data/
 *.log
+
+# Dev documents
+docs/
