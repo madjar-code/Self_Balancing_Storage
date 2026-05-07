@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -45,3 +46,25 @@ class Config:
 
     # === Skip index ===
     skip_block_size: int = 100
+
+    # === Persistence ===
+    data_path: Path = Path("./data")
+    cold_path: Path = Path("./data")
+    wal_path: Path = Path("./data/wal/current.log")
+    wal_fsync_interval_ms: int = 100
+
+    # === Tiers ===
+    heavy_index_threshold: int = 100 * 1024
+    disk_cost_factor: int = 100
+    demote_threshold: float = 0.1
+    demote_idle_sec: float = 300.0
+    promote_threshold: float = 0.5
+
+    # === HTTP API ===
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    ingest_queue_size: int = 1000
+
+    # === EventBroker ===
+    metric_tick_interval_sec: float = 2.0
+    event_subscriber_buffer: int = 1000
