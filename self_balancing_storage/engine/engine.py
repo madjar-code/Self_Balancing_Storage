@@ -42,6 +42,8 @@ class DecisionEngine:
         tracker: "AccessTracker",
         store: "ChunkStore",
         config: Config,
+        event_broker=None,
+        persistence=None,
     ):
         self.tracker = tracker
         self.store = store
@@ -52,6 +54,9 @@ class DecisionEngine:
         self.burst_stability = StabilityCounter(n=config.burst_stability_n)
         self.deferred_index_queue: list[BuildIndexAction] = []
         self.dropped_indexes: dict[IndexId, DroppedIndex] = {}
+
+        self.event_broker = event_broker
+        self.persistence = persistence
 
     async def run(self) -> None:
         while not self._stop_event.is_set():
