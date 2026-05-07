@@ -50,3 +50,8 @@ class Predicate:
 
     def key(self) -> bytes:
         return f"{self.field}|{self.op.value}".encode()
+
+
+class Tier(Enum):
+    HOT = "hot"
+    COLD = "cold"
