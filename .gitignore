@@ -19,3 +19,7 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+
+# Persistence
+data/
+*.log
