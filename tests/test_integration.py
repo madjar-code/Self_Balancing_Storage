@@ -22,7 +22,7 @@ async def test_end_to_end_basic():
             ))
         # queries that should make Engine notice predicate
         for _ in range(5):
-            rt.find(Predicate(field="service", op=PredicateOp.EQ, value="auth-api"))
+            await rt.find(Predicate(field="service", op=PredicateOp.EQ, value="auth-api"))
         # let the engine run a few ticks
         await asyncio.sleep(0.5)
 
