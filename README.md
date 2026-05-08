@@ -48,10 +48,10 @@ uv sync
 
 ## Running
 
-V1 demo — per-chunk divergence:
+End-to-end demo (writes, queries, burst, idle, recovery — all phases):
 
 ```bash
-uv run python -m demo.per_chunk_divergence
+uv run python -m demo.full_v2_demo
 ```
 
 Tests:
