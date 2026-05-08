@@ -9,22 +9,33 @@ from ..indexes.base import make_index_id
 from ..indexes.bloom import BloomIndex
 from ..indexes.hash_index import HashIndex
 from ..indexes.skip_index import SkipIndex
-from ..types import ChunkId, IndexId, IndexType
+from ..types import (
+    Tier,
+    ChunkId,
+    IndexId,
+    IndexType,
+)
 from .actions import (
     Action,
     BuildIndexAction,
     DropIndexAction,
     DroppedIndex,
     RestoreIndexAction,
+    DemoteChunkAction,
+    PromoteChunkAction,
+    EvictHeavyIndexAction,
 )
 from .decisions import (
     IndexInfo,
     TrackerView,
     choose_index_type,
+    compute_roi,
     is_dropped_expired,
     plan_memory_relief,
     should_build_index,
+    should_demote_chunk,
     should_drop_index,
+    should_promote_chunk,
     should_restore_dropped_index,
 )
 from .stability import StabilityCounter
@@ -43,7 +54,6 @@ class DecisionEngine:
         store: "ChunkStore",
         config: Config,
         event_broker=None,
-        persistence=None,
     ):
         self.tracker = tracker
         self.store = store
@@ -56,7 +66,6 @@ class DecisionEngine:
         self.dropped_indexes: dict[IndexId, DroppedIndex] = {}
 
         self.event_broker = event_broker
-        self.persistence = persistence
 
     async def run(self) -> None:
         while not self._stop_event.is_set():
@@ -81,21 +90,49 @@ class DecisionEngine:
 
         # 1. Memory relief - highest priority
         index_infos = self._collect_index_infos()
-        actions.extend(plan_memory_relief(view, index_infos, self.config))
+        actions.extend(
+            plan_memory_relief(
+                view,
+                index_infos,
+                list(self.store.chunks),
+                self.config
+            )
+        )
 
         # 2. Burst mode update
         burst_now = view.burst_ratio > self.config.burst_enter
         if not self.in_burst and self.burst_stability.observe(burst_now):
             self.in_burst = True
-            logger.info("burst_mode_enter", ...)
+            logger.info(
+                "burst_mode_enter",
+                extra={"event": "burst", "state": "enter", "ratio": view.burst_ratio},
+            )
+            self._publish_event({
+                "type": "burst",
+                "ts": time.time(),
+                "state": "enter",
+                "ratio": view.burst_ratio,
+            })
         elif self.in_burst and view.burst_ratio < self.config.burst_exit:
             self.in_burst = False
             self.burst_stability.reset()
+            logger.info(
+                "burst_mode_exit",
+                extra={"event": "burst", "state": "exit", "ratio": view.burst_ratio},
+            )
+            self._publish_event({
+                "type": "burst",
+                "ts": time.time(),
+                "state": "exit",
+                "ratio": view.burst_ratio,
+            })
 
-        # 3. Plan drops and if not in burst - plan builds, restores
+        # 3. Plan drops and if not in burst - plan builds, restores, tier moves
         if not self.in_burst:
             actions.extend(self._plan_index_restores(view))
             actions.extend(self._plan_index_builds(view))
+            actions.extend(self._plan_promotes(view))
+            actions.extend(self._plan_demotes(view))
         actions.extend(self._plan_index_drops(view, index_infos))
 
         # 4. Cleanup expider dropped
@@ -189,6 +226,7 @@ class DecisionEngine:
             index_usage=usage,
             index_last_used=last_used,
             memory_pressure=self.tracker.memory_pressure(),
+            chunk_last_access=self.tracker.chunk_last_access(),
             top_predicates=top_preds,
         )
 
@@ -225,7 +263,7 @@ class DecisionEngine:
     def _plan_index_builds(self, view: TrackerView) -> list[BuildIndexAction]:
         actions: list[BuildIndexAction] = []
         for chunk in self.store.chunks:
-            if chunk.header.state.value != "sealed":
+            if chunk.header.state.value == "open" or chunk.tier == Tier.COLD:
                 continue
             for predicate, _freq in view.top_predicates:
                 idx_type = choose_index_type(predicate, chunk.header.schema_sketch)
@@ -256,6 +294,23 @@ class DecisionEngine:
             if should_drop_index(info, view, self.config)
         ]
 
+    def _plan_promotes(self, view: TrackerView) -> list[PromoteChunkAction]:
+        return [
+            PromoteChunkAction(chunk_id=chunk.header.chunk_id)
+            for chunk in self.store.chunks
+            if should_promote_chunk(chunk, view, self.config)
+        ]
+
+    def _plan_demotes(self, view: TrackerView) -> list[DemoteChunkAction]:
+        # Temperature/idle-driven demotes; memory-pressure demotes come from
+        # plan_memory_relief. Duplicate actions are harmless: _apply_demote
+        # is idempotent on chunks already in COLD.
+        return [
+            DemoteChunkAction(chunk_id=chunk.header.chunk_id)
+            for chunk in self.store.chunks
+            if should_demote_chunk(chunk, view, self.config)
+        ]
+
     def _expire_dropped(self, now: float) -> None:
         expired = [
             iid for iid, d in self.dropped_indexes.items()
@@ -278,6 +333,12 @@ class DecisionEngine:
             await self._apply_drop(action)
         elif isinstance(action, RestoreIndexAction):
             await self._apply_restore(action)
+        elif isinstance(action, DemoteChunkAction):
+            await self._apply_demote(action)
+        elif isinstance(action, PromoteChunkAction):
+            await self._apply_promote(action)
+        elif isinstance(action, EvictHeavyIndexAction):
+            await self._apply_evict_heavy(action)
 
     async def _apply_build(self, action: BuildIndexAction) -> None:
         chunk = self._find_chunk(action.chunk_id)
@@ -303,11 +364,23 @@ class DecisionEngine:
                 "applied": True,
             },
         )
+        self._publish_event({
+            "type": "decision",
+            "ts": time.time(),
+            "action": "build_index",
+            "chunk_id": action.chunk_id,
+            "predicate": {"field": action.field, "op": action.op.value},
+            "index_type": action.index_type.value,
+        })
 
     async def _apply_drop(self, action: DropIndexAction) -> None:
         for chunk in self.store.chunks:
             if action.index_id in chunk.indexes:
                 idx = chunk.indexes.pop(action.index_id)
+                usage = self.tracker.index_usage(action.index_id)
+                last_used = self.tracker.index_last_used(action.index_id)
+                idle = (time.time() - last_used) if last_used is not None else float("inf")
+                roi = compute_roi(usage, idx.memory_bytes)
                 self.dropped_indexes[action.index_id] = DroppedIndex(
                     index_id=action.index_id,
                     chunk_id=chunk.header.chunk_id,
@@ -315,7 +388,7 @@ class DecisionEngine:
                     op=idx.op,
                     index_type=_index_type_of(idx),
                     dropped_at=time.time(),
-                    prior_usage=self.tracker.index_usage(action.index_id),
+                    prior_usage=usage,
                 )
                 logger.info(
                     "decision",
@@ -325,6 +398,13 @@ class DecisionEngine:
                         "index_id": action.index_id,
                     },
                 )
+                self._publish_event({
+                    "type": "decision",
+                    "ts": time.time(),
+                    "action": "drop_index",
+                    "index_id": action.index_id,
+                    "reason": f"idle={idle:.0f}s, roi={roi:.2f}",
+                })
                 return
 
     async def _apply_restore(self, action: RestoreIndexAction) -> None:
@@ -345,6 +425,60 @@ class DecisionEngine:
                 "field": action.field,
             },
         )
+        self._publish_event({
+            "type": "decision",
+            "ts": time.time(),
+            "action": "restore_index",
+            "chunk_id": action.chunk_id,
+            "predicate": {"field": action.field, "op": action.op.value},
+            "index_type": action.index_type.value,
+        })
+
+    async def _apply_demote(self, action: DemoteChunkAction) -> None:
+        chunk = self._find_chunk(action.chunk_id)
+        if chunk is None or chunk.tier == Tier.COLD:
+            return
+        chunk.entries = []
+        chunk.tier = Tier.COLD
+        self._publish_event({
+            "type": "tier_change",
+            "ts": time.time(),
+            "chunk_id": action.chunk_id,
+            "from": "hot",
+            "to": "cold",
+        })
+
+    async def _apply_promote(self, action: PromoteChunkAction) -> None:
+        chunk = self._find_chunk(action.chunk_id)
+        if chunk is None or chunk.tier == Tier.HOT:
+            return
+        # TODO: load entries from disk via Runtime-supplied ChunkReader.
+        chunk.tier = Tier.HOT
+        self._publish_event({
+            "type": "tier_change",
+            "ts": time.time(),
+            "chunk_id": action.chunk_id,
+            "from": "cold",
+            "to": "hot",
+        })
+
+    async def _apply_evict_heavy(self, action: EvictHeavyIndexAction) -> None:
+        for chunk in self.store.chunks:
+            if action.index_id in chunk.indexes:
+                chunk.indexes.pop(action.index_id)
+                if action.index_id not in chunk.header.indexes_on_disk:
+                    chunk.header.indexes_on_disk.append(action.index_id)
+                self._publish_event({
+                    "type": "decision",
+                    "ts": time.time(),
+                    "action": "evict_heavy_index",
+                    "index_id": action.index_id,
+                })
+                return
+
+    def _publish_event(self, event: dict) -> None:
+        if self.event_broker is not None:
+            self.event_broker.publish(event)
 
     def _find_chunk(self, chunk_id: ChunkId):
         for c in self.store.chunks:

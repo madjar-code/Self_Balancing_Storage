@@ -8,7 +8,6 @@ from ..types import (
     PredicateOp,
 )
 
-
 @dataclass(frozen=True)
 class BuildIndexAction:
     chunk_id: ChunkId
@@ -33,7 +32,33 @@ class RestoreIndexAction:
     priority: int = 30
 
 
-Action = BuildIndexAction | DropIndexAction | RestoreIndexAction
+# === V2 NEW ===
+@dataclass(frozen=True)
+class DemoteChunkAction:
+    chunk_id: ChunkId
+    priority: int = 20
+
+
+@dataclass(frozen=True)
+class PromoteChunkAction:
+    chunk_id: ChunkId
+    priority: int = 25
+
+
+@dataclass(frozen=True)
+class EvictHeavyIndexAction:
+    index_id: IndexId
+    priority: int = 15
+
+
+Action = (
+    BuildIndexAction
+    | DropIndexAction
+    | RestoreIndexAction
+    | DemoteChunkAction
+    | PromoteChunkAction
+    | EvictHeavyIndexAction
+)
 
 
 @dataclass
@@ -44,4 +69,4 @@ class DroppedIndex:
     op: PredicateOp
     index_type: IndexType
     dropped_at: float
-    prior_usage: int  # so fast restore doesn't have to "learn from scratch"
+    prior_usage: int
