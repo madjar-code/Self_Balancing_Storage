@@ -118,7 +118,7 @@ def _pick_index(chunk: Chunk, predicate: Predicate):
             continue
         if idx.op == predicate.op:
             return idx
-        # Bloom can answer EQ via the whole chunk
-        if predicate.op == PredicateOp.EQ and idx.op == PredicateOp.EQ:
+        # Bloom (op=IN) can answer EQ predicates as a per-chunk gate.
+        if predicate.op == PredicateOp.EQ and idx.op == PredicateOp.IN:
             return idx
     return None
