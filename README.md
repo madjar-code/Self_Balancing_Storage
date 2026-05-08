@@ -1,0 +1,68 @@
+# Self-Balancing Storage
+
+A prototype log storage engine that adapts its **indexes** and **storage tiers** to the workload it sees, instead of being configured in advance.
+
+## The idea
+
+Most log stores ask you to declare schemas, indexes and retention policies up front. This prototype takes the opposite approach: chunks of incoming logs are observed, and a control loop decides — for each chunk — which indexes to build, drop, or restore, and which chunks to move to a cold tier.
+
+Two chunks of the same logical "table" can end up with very different physical layouts because they saw different queries. That is the property the demo shows as **per-chunk divergence**.
+
+The control loop balances three signals — **predicate frequency** (what people actually query), **chunk temperature** (how hot the data is), and **memory pressure** (when to free memory) — with anti-thrashing protections (cooldowns, hysteresis, stability counters).
+
+## How decisions are made
+
+The decision engine runs on a periodic tick. On each tick it:
+
+1. Takes a read-only snapshot of the tracker's metrics, so all decisions in the tick see a consistent state.
+2. Walks through chunks and indexes and asks small pure functions like `should_build_index`, `should_drop_index`, `should_demote_chunk`. Each function looks at the snapshot, the chunk and the config, and returns a yes/no.
+3. Collects the proposed actions, sorts them by priority and applies a budget per tick so the engine never spends too long on bookkeeping.
+4. Anti-thrashing guards run before anything is applied: an index that was just dropped sits in cooldown, burst mode is entered/exited with hysteresis, and short-lived spikes have to stay stable for a few ticks before they cause action.
+5. Each decision is logged as a structured event explaining *why* it was taken, so the engine's behaviour is observable, not magical.
+
+```mermaid
+flowchart LR
+    W[Writes] --> T[AccessTracker]
+    Q[Queries] --> T
+    M[Memory pressure] --> T
+    T -->|snapshot| E{DecisionEngine tick}
+    E -->|should_build / drop / restore| IDX[Indexes]
+    E -->|should_demote / promote| TIER[Chunks: HOT / COLD]
+    E -->|memory relief cascade| IDX
+    G[Anti-thrashing guards:<br/>cooldown, hysteresis,<br/>stability counter] --- E
+    E -->|structured event| LOG[Decision log / SSE]
+```
+
+## Versions
+
+- **V1 — Core.** In-memory prototype with the chunk lifecycle, three index types, the access tracker and the decision engine. Single tier, single process, no persistence. The per-chunk divergence demo runs on V1.
+- **V2 — Expansion.** Adds persistence (chunks on disk + WAL with recovery), hot/cold tiers, a small query language, an HTTP API and an event stream for observability.
+
+## Installation
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync
+```
+
+## Running
+
+V1 demo — per-chunk divergence:
+
+```bash
+uv run python -m demo.per_chunk_divergence
+```
+
+Tests:
+
+```bash
+uv run pytest
+```
+
+Type-checking and lint:
+
+```bash
+uv run mypy self_balancing_storage
+uv run ruff check
+```
