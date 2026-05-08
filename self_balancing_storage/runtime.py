@@ -100,24 +100,40 @@ class Runtime:
             chunk_id=self.store.chunks[-1].header.chunk_id if self.store.chunks else None,
         ))
 
-    async def find(
-        self,
-        query: "str | Query | Predicate",
-        time_range: tuple[float, float] | None = None,
-    ) -> list[LogEntry]:
-        """Updated to accept str, Query, or Predicate (backward-compat)."""
-        if isinstance(query, Predicate):
-            results, scanned, used = self.store.find(query, time_range=time_range)
-            self.tracker.on_query(QueryEvent(
-                ts=time.time(),
-                predicates=[query],
-                chunks_scanned=scanned,
-                indexes_used=used,
-                duration_ms=0.0,
-                rows_returned=len(results),
-            ))
-            return results
-        raise NotImplementedError("Query Router integration has not been implemented yet.")
+    async def find(self, query, time_range=None) -> list[LogEntry]:
+        from .query.parser import parse
+        from .query.ast import Query
+        from .query.planner import plan_query
+        from .query.executor import execute as exec_plan
+
+        if isinstance(query, str):
+            q = parse(query)
+            if time_range is not None:
+                q = Query(
+                    where=q.where,
+                    limit=q.limit,
+                    time_range=time_range,
+                    order_by=q.order_by,
+                )
+        elif isinstance(query, Predicate):
+            q = Query(where=query, time_range=time_range)
+        else:
+            q = query
+
+        plan = plan_query(q, self.store)
+        t0 = time.time()
+        results, scanned, used = await exec_plan(plan, self.store)
+        duration_ms = (time.time() - t0) * 1000
+
+        self.tracker.on_query(QueryEvent(
+            ts=time.time(),
+            predicates=_extract_predicates(q.where),
+            chunks_scanned=scanned,
+            indexes_used=used,
+            duration_ms=duration_ms,
+            rows_returned=len(results),
+        ))
+        return results
 
     async def _consumer_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -180,3 +196,17 @@ async def runtime(config: Config | None = None) -> AsyncIterator[Runtime]:
         yield rt
     finally:
         await rt.stop()
+
+
+def _extract_predicates(expr) -> list[Predicate]:
+    from .query.ast import And, Or, Not
+    if isinstance(expr, Predicate):
+        return [expr]
+    if isinstance(expr, (And, Or)):
+        out = []
+        for p in expr.parts:
+            out.extend(_extract_predicates(p))
+        return out
+    if isinstance(expr, Not):
+        return _extract_predicates(expr.expr)
+    return []

@@ -8,8 +8,14 @@ from self_balancing_storage.types import LogEntry, Predicate, PredicateOp
 
 
 @pytest.mark.asyncio
-async def test_end_to_end_basic():
-    config = Config(tick_interval_sec=0.1, build_threshold_freq=2)
+async def test_end_to_end_basic(tmp_path):
+    config = Config(
+        tick_interval_sec=0.1,
+        build_threshold_freq=2,
+        data_path=tmp_path,
+        cold_path=tmp_path,
+        wal_path=tmp_path / "wal" / "current.log",
+    )
     async with runtime(config) as rt:
         # writes
         for i in range(50):
@@ -28,5 +34,5 @@ async def test_end_to_end_basic():
 
         # at least one index should appear somewhere
         any_index = any(c.indexes for c in rt.store.chunks)
-        # print(rt.engine._collect_index_infos())
+        print(rt.engine._collect_index_infos())
         assert any_index
