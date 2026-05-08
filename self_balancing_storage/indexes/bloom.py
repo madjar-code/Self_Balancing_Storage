@@ -52,6 +52,8 @@ def _to_bytes(value: Any) -> bytes:
 
 
 class BloomIndex:
+    precise = False
+
     def __init__(
         self,
         chunk_id: ChunkId,
