@@ -4,7 +4,7 @@ import psutil
 from dataclasses import dataclass, field
 
 from ..config import Config
-from ..types import ChunkId, IndexId, Predicate
+from ..types import ChunkId, IndexId, Predicate, PredicateOp
 from .heatmap import ChunkHeatmap
 from .primitives import (
     BurstDetector,
@@ -42,6 +42,7 @@ class AccessTracker:
         self._heatmap = ChunkHeatmap(alpha=config.ema_alpha_chunk_temp)
         self._index_usage: dict[IndexId, int] = {}
         self._index_last_used: dict[IndexId, float] = {}
+        self._predicate_last_seen: dict[tuple[str, PredicateOp], float] = {}
         self._process = psutil.Process()
 
     # === events ===
@@ -54,6 +55,7 @@ class AccessTracker:
         for p in event.predicates:
             self._cms.increment(p.key())
             self._topk.add(p)
+            self._predicate_last_seen[(p.field, p.op)] = event.ts
         for cid in event.chunks_scanned:
             self._heatmap.record_access(cid, event.ts)
         for iid in event.indexes_used:
@@ -116,3 +118,6 @@ class AccessTracker:
 
     def chunk_last_access(self) -> dict[ChunkId, float]:
         return self._heatmap.last_access_snapshot()
+
+    def predicate_last_seen_snapshot(self) -> dict[tuple[str, PredicateOp], float]:
+        return dict(self._predicate_last_seen)

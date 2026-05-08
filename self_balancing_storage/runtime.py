@@ -44,6 +44,7 @@ class Runtime:
             self.store,
             self.config,
             event_broker=self.event_broker,
+            reader=self.reader,
         )
 
         # Ingest queue + tasks
@@ -122,7 +123,7 @@ class Runtime:
 
         plan = plan_query(q, self.store)
         t0 = time.time()
-        results, scanned, used = await exec_plan(plan, self.store)
+        results, scanned, used = await exec_plan(plan, self.store, reader=self.reader)
         duration_ms = (time.time() - t0) * 1000
 
         self.tracker.on_query(QueryEvent(

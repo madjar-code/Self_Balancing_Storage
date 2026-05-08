@@ -18,8 +18,18 @@ from self_balancing_storage.types import IndexType, Predicate, PredicateOp, Tier
 
 class FakeChunk:
     """Minimal chunk stand-in for decision-function tests."""
-    def __init__(self, chunk_id: str, schema: dict[str, set[type]], tier: Tier = Tier.HOT):
-        self.header = type("H", (), {"chunk_id": chunk_id, "schema_sketch": schema})()
+    def __init__(
+        self,
+        chunk_id: str,
+        schema: dict[str, set[type]],
+        tier: Tier = Tier.HOT,
+        state: str = "persisted",
+    ):
+        state_obj = type("S", (), {"value": state})()
+        self.header = type(
+            "H", (),
+            {"chunk_id": chunk_id, "schema_sketch": schema, "state": state_obj},
+        )()
         self.tier = tier
 
 
@@ -129,7 +139,11 @@ def test_restore_within_cooldown_and_predicate_returned():
         dropped_at=900, prior_usage=20,
     )
     pred = Predicate("service", PredicateOp.EQ)
-    view = base_view(now=1000, predicate_freqs={pred: 10})
+    view = base_view(
+        now=1000,
+        predicate_freqs={pred: 10},
+        predicate_last_seen={("service", PredicateOp.EQ): 950.0},  # after drop
+    )
     assert should_restore_dropped_index(dropped, view, config) is True
 
 
@@ -159,6 +173,7 @@ def test_restore_matches_value_keyed_predicates():
             Predicate("trace_id", PredicateOp.EQ, "trace-7"): 3,
             Predicate("service", PredicateOp.EQ, "auth"): 50,  # noise
         },
+        predicate_last_seen={("trace_id", PredicateOp.EQ): 980.0},
     )
     # 7 + 3 = 10 >= threshold 5
     assert should_restore_dropped_index(dropped, view, config) is True
@@ -176,8 +191,41 @@ def test_no_restore_when_aggregated_freq_below_threshold():
             Predicate("trace_id", PredicateOp.EQ, "trace-42"): 5,
             Predicate("trace_id", PredicateOp.EQ, "trace-7"): 5,
         },
+        predicate_last_seen={("trace_id", PredicateOp.EQ): 980.0},
     )
     # 5 + 5 = 10 < threshold 20
+    assert should_restore_dropped_index(dropped, view, config) is False
+
+
+def test_no_restore_when_predicate_not_seen_since_drop():
+    # Drop/restore ping-pong guard: stale predicate freqs (no fresh queries
+    # since the drop) must not trigger a restore.
+    config = Config(cooldown_sec=600, build_threshold_freq=5)
+    dropped = DroppedIndex(
+        "i1", "c1", "service", PredicateOp.EQ, IndexType.HASH,
+        dropped_at=900, prior_usage=20,
+    )
+    pred = Predicate("service", PredicateOp.EQ, "auth")
+    view = base_view(
+        now=1000,
+        predicate_freqs={pred: 50},  # high freq from before the drop
+        predicate_last_seen={("service", PredicateOp.EQ): 800.0},  # before drop
+    )
+    assert should_restore_dropped_index(dropped, view, config) is False
+
+
+def test_no_restore_when_predicate_never_seen():
+    config = Config(cooldown_sec=600, build_threshold_freq=5)
+    dropped = DroppedIndex(
+        "i1", "c1", "service", PredicateOp.EQ, IndexType.HASH,
+        dropped_at=900, prior_usage=20,
+    )
+    pred = Predicate("service", PredicateOp.EQ, "auth")
+    view = base_view(
+        now=1000,
+        predicate_freqs={pred: 50},
+        predicate_last_seen={},  # tracker has no record
+    )
     assert should_restore_dropped_index(dropped, view, config) is False
 
 

@@ -21,6 +21,7 @@ from self_balancing_storage.indexes.hash_index import HashIndex
 from self_balancing_storage.store import ChunkStore
 from self_balancing_storage.tracker.tracker import AccessTracker
 from self_balancing_storage.types import (
+    ChunkState,
     IndexType,
     LogEntry,
     PredicateOp,
@@ -29,8 +30,11 @@ from self_balancing_storage.types import (
 
 
 class FakeChunk:
-    def __init__(self, chunk_id: str, tier: Tier = Tier.HOT):
-        self.header = type("H", (), {"chunk_id": chunk_id, "schema_sketch": {}})()
+    def __init__(self, chunk_id: str, tier: Tier = Tier.HOT, state: str = "persisted"):
+        state_obj = type("S", (), {"value": state})()
+        self.header = type(
+            "H", (), {"chunk_id": chunk_id, "schema_sketch": {}, "state": state_obj},
+        )()
         self.tier = tier
 
 
@@ -108,6 +112,23 @@ def test_demote_true_when_no_recorded_access():
     assert should_demote_chunk(chunk, view, config) is True
 
 
+def test_demote_false_for_open_chunk():
+    # Open chunks aren't on disk yet; demote would clear entries and lose data.
+    config = Config(demote_threshold=0.1, demote_idle_sec=300.0)
+    chunk = FakeChunk("c1", tier=Tier.HOT, state="open")
+    view = base_view(chunk_temperatures={"c1": 0.0})
+    assert should_demote_chunk(chunk, view, config) is False
+
+
+def test_demote_false_for_sealed_not_yet_persisted_chunk():
+    # Sealed chunks have a persist task queued but maybe not finished;
+    # demoting would race and write empty entries to disk.
+    config = Config(demote_threshold=0.1, demote_idle_sec=300.0)
+    chunk = FakeChunk("c1", tier=Tier.HOT, state="sealed")
+    view = base_view(chunk_temperatures={"c1": 0.0})
+    assert should_demote_chunk(chunk, view, config) is False
+
+
 # === should_promote_chunk ===
 
 def test_promote_true_when_cold_and_temperature_high():
@@ -183,6 +204,7 @@ async def test_apply_demote_clears_entries_and_emits_event():
     for i in range(5):
         store.append(LogEntry(ts=float(i), service="a", level="INFO", msg="m"))
     chunk = store.chunks[0]
+    chunk.header.state = ChunkState.PERSISTED
     assert chunk.tier == Tier.HOT
     assert chunk.entries
 

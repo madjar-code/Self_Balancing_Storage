@@ -48,6 +48,7 @@ class TrackerView:
     index_last_used: dict[IndexId, float]
     memory_pressure: float
     top_predicates: list[tuple[Predicate, int]] = field(default_factory=list)
+    predicate_last_seen: dict[tuple[str, PredicateOp], float] = field(default_factory=dict)
 
 
 def should_build_index(
@@ -97,9 +98,10 @@ def should_restore_dropped_index(
 ) -> bool:
     if (view.now - dropped.dropped_at) > config.cooldown_sec:
         return False
-    # Sum frequencies across all (field, op) matches: predicate_freqs is keyed
-    # by full Predicate (incl. value), so a value-agnostic restore decision
-    # has to aggregate over matching keys.
+    # Freshness gate: a query must have hit (field, op) since the drop.
+    last_seen = view.predicate_last_seen.get((dropped.field, dropped.op))
+    if last_seen is None or last_seen <= dropped.dropped_at:
+        return False
     freq = sum(
         f for p, f in view.predicate_freqs.items()
         if p.field == dropped.field and p.op == dropped.op
@@ -113,6 +115,8 @@ def is_dropped_expired(dropped: DroppedIndex, now: float, cooldown_sec: float) -
 
 def should_demote_chunk(chunk: Chunk, view: TrackerView, config: Config) -> bool:
     if chunk.tier.value != "hot":
+        return False
+    if chunk.header.state.value != "persisted":
         return False
     temp = view.chunk_temperatures.get(chunk.header.chunk_id, 0.0)
     if temp >= config.demote_threshold:
@@ -166,7 +170,10 @@ def plan_memory_relief(
         return actions
 
     from ..types import Tier
-    hot_chunks = [c for c in chunks if c.tier == Tier.HOT]
+    hot_chunks = [
+        c for c in chunks
+        if c.tier == Tier.HOT and c.header.state.value == "persisted"
+    ]
     coldest_first = sorted(
         hot_chunks,
         key=lambda c: view.chunk_temperatures.get(c.header.chunk_id, 0.0),

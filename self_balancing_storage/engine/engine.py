@@ -54,6 +54,7 @@ class DecisionEngine:
         store: "ChunkStore",
         config: Config,
         event_broker=None,
+        reader=None,
     ):
         self.tracker = tracker
         self.store = store
@@ -66,6 +67,7 @@ class DecisionEngine:
         self.dropped_indexes: dict[IndexId, DroppedIndex] = {}
 
         self.event_broker = event_broker
+        self.reader = reader
 
     async def run(self) -> None:
         while not self._stop_event.is_set():
@@ -85,6 +87,10 @@ class DecisionEngine:
         self._stop_event.set()
 
     async def _tick(self) -> None:
+        # Decay temperatures of all chunks. Chunks that get queried in this
+        # tick will have record_access bump temp back up; idle chunks decay.
+        self.tracker.cool_down_chunks([c.header.chunk_id for c in self.store.chunks])
+
         view = self._make_tracker_view()
         actions: list[Action] = []
 
@@ -228,6 +234,7 @@ class DecisionEngine:
             memory_pressure=self.tracker.memory_pressure(),
             chunk_last_access=self.tracker.chunk_last_access(),
             top_predicates=top_preds,
+            predicate_last_seen=self.tracker.predicate_last_seen_snapshot(),
         )
 
     def _collect_index_infos(self) -> list[IndexInfo]:
@@ -411,8 +418,12 @@ class DecisionEngine:
         chunk = self._find_chunk(action.chunk_id)
         if chunk is None:
             return
+        if chunk.tier == Tier.COLD and self.reader is not None:
+            entries = await self.reader.load_entries(chunk.header.chunk_id)
+        else:
+            entries = chunk.entries
         idx = _make_index(chunk, action.field, action.index_type, self.config)
-        idx.build(chunk.entries)
+        idx.build(entries)
         chunk.indexes[idx.index_id] = idx
         self.dropped_indexes.pop(idx.index_id, None)
         self.tracker.on_index_built(idx.index_id)
@@ -438,6 +449,8 @@ class DecisionEngine:
         chunk = self._find_chunk(action.chunk_id)
         if chunk is None or chunk.tier == Tier.COLD:
             return
+        if chunk.header.state.value != "persisted":
+            return
         chunk.entries = []
         chunk.tier = Tier.COLD
         self._publish_event({
@@ -452,7 +465,8 @@ class DecisionEngine:
         chunk = self._find_chunk(action.chunk_id)
         if chunk is None or chunk.tier == Tier.HOT:
             return
-        # TODO: load entries from disk via Runtime-supplied ChunkReader.
+        if self.reader is not None and not chunk.entries:
+            chunk.entries = await self.reader.load_entries(chunk.header.chunk_id)
         chunk.tier = Tier.HOT
         self._publish_event({
             "type": "tier_change",
