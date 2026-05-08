@@ -1,6 +1,10 @@
 from typing import Any
 from self_balancing_storage.config import Config
-from self_balancing_storage.engine.actions import DropIndexAction, DroppedIndex
+from self_balancing_storage.engine.actions import (
+    DemoteChunkAction,
+    DropIndexAction,
+    DroppedIndex,
+)
 from self_balancing_storage.engine.decisions import (
     IndexInfo,
     TrackerView,
@@ -9,13 +13,14 @@ from self_balancing_storage.engine.decisions import (
     should_drop_index,
     should_restore_dropped_index,
 )
-from self_balancing_storage.types import IndexType, Predicate, PredicateOp
+from self_balancing_storage.types import IndexType, Predicate, PredicateOp, Tier
 
 
 class FakeChunk:
     """Minimal chunk stand-in for decision-function tests."""
-    def __init__(self, chunk_id: str, schema: dict[str, set[type]]):
+    def __init__(self, chunk_id: str, schema: dict[str, set[type]], tier: Tier = Tier.HOT):
         self.header = type("H", (), {"chunk_id": chunk_id, "schema_sketch": schema})()
+        self.tier = tier
 
 
 def base_view(**overrides) -> TrackerView:
@@ -26,6 +31,7 @@ def base_view(**overrides) -> TrackerView:
         is_burst=False,
         predicate_freqs={},
         chunk_temperatures={},
+        chunk_last_access={},
         index_usage={},
         index_last_used={},
         memory_pressure=0.3,
@@ -191,26 +197,36 @@ def test_no_drop_for_freshly_built_index_with_recorded_birth():
 
 def test_relief_no_action_below_threshold():
     config = Config(mem_pressure_drop=0.7)
-    actions = plan_memory_relief(base_view(memory_pressure=0.5), [], config)
+    actions = plan_memory_relief(base_view(memory_pressure=0.5), [], [], config)
     assert actions == []
 
 
-def test_relief_drops_25_percent_at_elevated():
+def test_relief_demotes_25_percent_coldest_at_elevated():
     config = Config(mem_pressure_drop=0.7, mem_pressure_high=0.8, mem_pressure_critical=0.95)
-    indexes = [
-        IndexInfo(f"i{i}", "c1", "x", PredicateOp.EQ, IndexType.HASH, memory_bytes=1000)
-        for i in range(8)
-    ]
-    actions = plan_memory_relief(base_view(memory_pressure=0.75), indexes, config)
+    chunks = [FakeChunk(f"c{i}", {}, tier=Tier.HOT) for i in range(8)]
+    temperatures = {f"c{i}": float(i) * 0.1 for i in range(8)}  # c0 coldest, c7 hottest
+    actions = plan_memory_relief(
+        base_view(memory_pressure=0.75, chunk_temperatures=temperatures),
+        [],
+        chunks,
+        config,
+    )
     assert len(actions) == 2  # 25% of 8
+    assert all(isinstance(a, DemoteChunkAction) for a in actions)
+    assert {a.chunk_id for a in actions} == {"c0", "c1"}  # the two coldest
 
 
-def test_relief_critical_keeps_top_3():
+def test_relief_critical_demotes_all_hot_and_keeps_top_3_indexes():
     config = Config(mem_pressure_drop=0.7, mem_pressure_high=0.8, mem_pressure_critical=0.95)
+    chunks = [FakeChunk(f"c{i}", {}, tier=Tier.HOT) for i in range(4)]
     indexes = [
         IndexInfo(f"i{i}", "c1", "x", PredicateOp.EQ, IndexType.HASH, memory_bytes=1000)
         for i in range(10)
     ]
-    actions = plan_memory_relief(base_view(memory_pressure=0.97), indexes, config)
-    assert len(actions) == 7  # all but top-3
-    assert all(isinstance(a, DropIndexAction) for a in actions)
+    actions = plan_memory_relief(
+        base_view(memory_pressure=0.97), indexes, chunks, config,
+    )
+    demotes = [a for a in actions if isinstance(a, DemoteChunkAction)]
+    drops = [a for a in actions if isinstance(a, DropIndexAction)]
+    assert len(demotes) == 4  # all hot chunks demoted
+    assert len(drops) == 7    # all indexes but top-3 dropped
