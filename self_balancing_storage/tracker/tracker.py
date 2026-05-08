@@ -113,3 +113,6 @@ class AccessTracker:
 
     def forget_chunk(self, chunk_id: ChunkId) -> None:
         self._heatmap.remove(chunk_id)
+
+    def chunk_last_access(self) -> dict[ChunkId, float]:
+        return self._heatmap.last_access_snapshot()
