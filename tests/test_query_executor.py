@@ -1,13 +1,17 @@
+from pathlib import Path
+
 import pytest
 
 from self_balancing_storage.config import Config
 from self_balancing_storage.indexes.bloom import BloomIndex
 from self_balancing_storage.indexes.hash_index import HashIndex
+from self_balancing_storage.persistence.chunk_reader import ChunkReader
+from self_balancing_storage.persistence.chunk_writer import ChunkPersistence
 from self_balancing_storage.query.executor import execute
 from self_balancing_storage.query.parser import parse
 from self_balancing_storage.query.planner import plan_query
 from self_balancing_storage.store import ChunkStore
-from self_balancing_storage.types import LogEntry
+from self_balancing_storage.types import LogEntry, Tier
 
 
 @pytest.fixture
@@ -95,3 +99,50 @@ async def test_execute_bloom_post_filter(populated_store_with_bloom):
     results, _, used = await execute(plan, populated_store_with_bloom)
     assert all(e.fields.get("trace_id") == "trace-7" for e in results)
     assert len(used) > 0
+
+
+@pytest.mark.asyncio
+async def test_execute_loads_cold_chunks_from_disk(populated_store_with_hash_index, tmp_path: Path):
+    """
+    When chunks are cold, executor should fetch their entries from disk
+    via the supplied reader and still return correct results.
+    """
+    persistence = ChunkPersistence(tmp_path)
+    for chunk in populated_store_with_hash_index.chunks:
+        if chunk.header.state.value == "open":
+            continue
+        await persistence.persist_chunk(chunk)
+        chunk.tier = Tier.COLD
+        chunk.entries = []
+
+    reader = ChunkReader(tmp_path)
+    plan = plan_query(parse('service="auth"'), populated_store_with_hash_index)
+    results, _, _ = await execute(plan, populated_store_with_hash_index, reader=reader)
+
+    assert results, "expected at least one matching entry from cold chunks"
+    assert all(e.service == "auth" for e in results)
+
+
+@pytest.mark.asyncio
+async def test_execute_skips_disk_load_for_index_only_miss(populated_store_with_hash_index, tmp_path: Path):
+    """
+    If a Hash index says no such value, executor must return empty
+    without paying for disk reads, even for cold chunks.
+    """
+    persistence = ChunkPersistence(tmp_path)
+    for chunk in populated_store_with_hash_index.chunks:
+        if chunk.header.state.value == "open":
+            continue
+        await persistence.persist_chunk(chunk)
+        chunk.tier = Tier.COLD
+        chunk.entries = []
+
+    class TripwireReader(ChunkReader):
+        """Reader that explodes on any disk access; proves no load happened."""
+        async def load_entries(self, chunk_id):
+            raise AssertionError("disk load should not happen for an index miss")
+
+    plan = plan_query(parse('service="absent-service"'), populated_store_with_hash_index)
+    results, _, _ = await execute(plan, populated_store_with_hash_index, reader=TripwireReader(tmp_path))
+
+    assert results == []

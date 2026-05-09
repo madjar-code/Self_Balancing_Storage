@@ -96,34 +96,58 @@ class Chunk:
 
     def scan(self, predicate: Predicate) -> list[int]:
         """Full scan, return positions (indices into self.entries)."""
-        result: list[int] = []
-        for i, entry in enumerate(self.entries):
-            if self._matches(entry, predicate):
-                result.append(i)
-        return result
+        match = make_matcher(predicate)
+        return [i for i, e in enumerate(self.entries) if match(e)]
 
     @staticmethod
     def _matches(entry: LogEntry, p: Predicate) -> bool:
-        value = _extract_field(entry, p.field)
-        if p.op == PredicateOp.EQ:
-            return value == p.value
-        if p.op == PredicateOp.IN:
-            return value in p.value
-        if p.op == PredicateOp.RANGE:
-            lo, hi = p.value
-            return value is not None and lo <= value <= hi
-        if p.op == PredicateOp.EXISTS:
-            return value is not None
-        return False
+        return make_matcher(p)(entry)
+
+
+_FIELD_GETTERS: dict[str, Any] = {
+    "ts": lambda e: e.ts,
+    "service": lambda e: e.service,
+    "level": lambda e: e.level,
+    "msg": lambda e: e.msg,
+}
 
 
 def _extract_field(entry: LogEntry, name: str) -> Any:
-    if name == "ts":
-        return entry.ts
-    if name == "service":
-        return entry.service
-    if name == "level":
-        return entry.level
-    if name == "msg":
-        return entry.msg
+    getter = _FIELD_GETTERS.get(name)
+    if getter is not None:
+        return getter(entry)
     return entry.fields.get(name)
+
+
+def make_matcher(predicate: Predicate):
+    """Build a per-entry checker once, reuse it inside the scan loop.
+
+    Avoids re-dispatching predicate.op and re-resolving the field accessor
+    on every entry comparison.
+    """
+    field = predicate.field
+    op = predicate.op
+    value = predicate.value
+    getter = _FIELD_GETTERS.get(field)
+
+    if getter is None:
+        getter = _make_fields_getter(field)
+
+    if op == PredicateOp.EQ:
+        return lambda e: getter(e) == value
+    if op == PredicateOp.IN:
+        bag = set(value) if isinstance(value, list) else value
+        return lambda e: getter(e) in bag
+    if op == PredicateOp.RANGE:
+        lo, hi = value
+        def _match_range(e: LogEntry) -> bool:
+            v = getter(e)
+            return v is not None and lo <= v <= hi
+        return _match_range
+    if op == PredicateOp.EXISTS:
+        return lambda e: getter(e) is not None
+    return lambda e: False
+
+
+def _make_fields_getter(name: str):
+    return lambda e: e.fields.get(name)

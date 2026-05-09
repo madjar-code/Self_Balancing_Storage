@@ -2,7 +2,7 @@ from __future__ import annotations
 import time
 from typing import Awaitable, Callable
 
-from .chunk import Chunk
+from .chunk import Chunk, make_matcher
 from .config import Config
 from .types import (
     ChunkId,
@@ -105,11 +105,8 @@ def _post_filter(
     predicate: Predicate,
 ) -> list[LogEntry]:
     """Filter index-returned candidate positions through exact predicate match."""
-    return [
-        chunk.entries[pos]
-        for pos in positions
-        if Chunk._matches(chunk.entries[pos], predicate)
-    ]
+    match = make_matcher(predicate)
+    return [chunk.entries[pos] for pos in positions if match(chunk.entries[pos])]
 
 def _pick_index(chunk: Chunk, predicate: Predicate):
     """Simple strategy: first index for the requested field with a compatible op."""
