@@ -26,3 +26,13 @@ data/
 
 # Dev documents
 docs/
+
+# Frontend build artifact
+/static/
+
+# Frontend deps
+/ui/node_modules/
+/ui/dist/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
