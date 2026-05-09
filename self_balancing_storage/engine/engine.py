@@ -144,20 +144,25 @@ class DecisionEngine:
                 "ratio": view.burst_ratio,
             })
 
-        # 3. Plan drops and if not in burst - plan builds, restores, tier moves
+        # 3. Seed static indexes (independent of dynamic_indexing).
+        if self.config.static_indexes:
+            self._ensure_static_indexes()
+
+        # 4. Plan drops and if not in burst - plan builds, restores, tier moves
         if not self.in_burst:
             if self.config.dynamic_indexing:
                 actions.extend(self._plan_index_restores(view))
                 actions.extend(self._plan_index_builds(view))
-            actions.extend(self._plan_promotes(view))
+            if self.config.dynamic_tiering:
+                actions.extend(self._plan_promotes(view))
             actions.extend(self._plan_demotes(view))
         if self.config.dynamic_indexing:
             actions.extend(self._plan_index_drops(view, index_infos))
 
-        # 4. Cleanup expider dropped
+        # 5. Cleanup expired dropped
         self._expire_dropped(view.now)
 
-        # 5. Sort by priority and apply within budget
+        # 6. Sort by priority and apply within budget
         actions.sort(key=lambda a: getattr(a, "priority", 99))
         budget = self.config.actions_per_tick_budget
         builds_count = 0
@@ -266,6 +271,26 @@ class DecisionEngine:
                 )
         return infos
 
+    def _ensure_static_indexes(self) -> None:
+        """
+        Build any missing index from `config.static_indexes` on every sealed
+        HOT chunk. Idempotent: skips chunks that already have the index.
+        """
+        for chunk in self.store.chunks:
+            if chunk.header.state.value == "open" or chunk.tier == Tier.COLD:
+                continue
+            if not chunk.entries:
+                continue
+            for field in self.config.static_indexes:
+                idx_type = IndexType.SKIP if field == "ts" else IndexType.HASH
+                iid = make_index_id(chunk.header.chunk_id, idx_type, field)
+                if iid in chunk.indexes:
+                    continue
+                idx = _make_index(chunk, field, idx_type, self.config)
+                idx.build(chunk.entries)
+                chunk.indexes[idx.index_id] = idx
+                self.tracker.on_index_built(idx.index_id)
+
     def _plan_index_restores(self, view: TrackerView) -> list[RestoreIndexAction]:
         actions: list[RestoreIndexAction] = []
         for dropped in list(self.dropped_indexes.values()):
@@ -308,10 +333,12 @@ class DecisionEngine:
         view: TrackerView,
         infos: list[IndexInfo],
     ) -> list[DropIndexAction]:
+        static_fields = set(self.config.static_indexes)
         return [
             DropIndexAction(index_id=info.index_id)
             for info in infos
-            if should_drop_index(info, view, self.config)
+            if info.field not in static_fields
+            and should_drop_index(info, view, self.config)
         ]
 
     def _plan_promotes(self, view: TrackerView) -> list[PromoteChunkAction]:

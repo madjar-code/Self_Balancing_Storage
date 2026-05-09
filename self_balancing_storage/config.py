@@ -17,6 +17,12 @@ class Config:
 
     # === Index decisions ===
     dynamic_indexing: bool = True
+    """
+    Field names that always have an index built on every sealed HOT chunk,
+    regardless of dynamic_indexing. Indexes on these fields are never dropped.
+    Use SkipIndex for "ts", HashIndex for everything else.
+    """
+    static_indexes: tuple[str, ...] = ()
     build_threshold_freq: int = 5
     min_temp_for_index: float = 0.3
     idle_drop_sec: float = 600.0
@@ -58,6 +64,11 @@ class Config:
     wal_fsync_interval_ms: int = 100
 
     # === Tiers ===
+    """
+    When False, the engine never plans promotions: cold chunks stay cold and
+    queries pay disk cost. Demotion still happens, so chunks naturally cool.
+    """
+    dynamic_tiering: bool = True
     heavy_index_threshold: int = 100 * 1024
     disk_cost_factor: int = 100
     demote_threshold: float = 0.1

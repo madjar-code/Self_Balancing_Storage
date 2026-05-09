@@ -43,6 +43,8 @@ class FakeChunk:
             },
         )()
         self.tier = tier
+        self.indexes: dict = {}
+        self.entries: list = []
 
 
 class FakeBroker:
@@ -372,3 +374,132 @@ async def test_apply_build_skips_chunk_with_empty_entries():
         index_type=IndexType.HASH,
     ))
     assert chunk.indexes == {}
+
+
+# === dynamic_tiering toggle ===
+
+def test_plan_promotes_runs_when_tiering_enabled():
+    """When dynamic_tiering=True (default), _plan_promotes returns actions."""
+    config = Config(dynamic_tiering=True, promote_threshold=0.5)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    chunk = FakeChunk("c1", tier=Tier.COLD)
+    store.chunks.append(chunk)  # type: ignore[arg-type]
+    view = base_view(chunk_temperatures={"c1": 0.9})
+    assert engine._plan_promotes(view) == [PromoteChunkAction(chunk_id="c1")]
+
+
+@pytest.mark.asyncio
+async def test_tick_skips_promotes_when_dynamic_tiering_disabled():
+    """The wrapper logic in _tick skips _plan_promotes when toggle is off."""
+    from self_balancing_storage.tracker.tracker import QueryEvent
+
+    config = Config(dynamic_tiering=False)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    chunk = FakeChunk("c1", tier=Tier.COLD)
+    store.chunks.append(chunk)  # type: ignore[arg-type]
+    """Seed heatmap so chunk c1 looks very hot."""
+    for _ in range(20):
+        tracker.on_query(QueryEvent(ts=1000.0, predicates=[], chunks_scanned=["c1"]))
+
+    promotes_seen: list[PromoteChunkAction] = []
+    original_apply = engine._apply
+
+    async def spy_apply(action):
+        if isinstance(action, PromoteChunkAction):
+            promotes_seen.append(action)
+        await original_apply(action)
+
+    engine._apply = spy_apply  # type: ignore[method-assign]
+    await engine._tick()
+    assert promotes_seen == []
+
+
+# === static_indexes ===
+
+def test_ensure_static_indexes_builds_on_sealed_hot_chunk():
+    config = Config(static_indexes=("service", "level"), dynamic_indexing=False)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(3):
+        store.append(LogEntry(ts=float(i), service="auth", level="INFO", msg="m"))
+    chunk = store.chunks[0]
+    chunk.header.state = ChunkState.PERSISTED
+    chunk.tier = Tier.HOT
+
+    engine._ensure_static_indexes()
+
+    fields = {idx.field for idx in chunk.indexes.values()}
+    assert fields == {"service", "level"}
+
+
+def test_ensure_static_indexes_idempotent():
+    """Calling twice produces no extra indexes."""
+    config = Config(static_indexes=("service",), dynamic_indexing=False)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(3):
+        store.append(LogEntry(ts=float(i), service="auth", level="INFO", msg="m"))
+    chunk = store.chunks[0]
+    chunk.header.state = ChunkState.PERSISTED
+    chunk.tier = Tier.HOT
+
+    engine._ensure_static_indexes()
+    n_first = len(chunk.indexes)
+    engine._ensure_static_indexes()
+    assert len(chunk.indexes) == n_first
+
+
+def test_ensure_static_indexes_skips_cold_chunk():
+    config = Config(static_indexes=("service",))
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(3):
+        store.append(LogEntry(ts=float(i), service="auth", level="INFO", msg="m"))
+    chunk = store.chunks[0]
+    chunk.tier = Tier.COLD
+    chunk.header.state = ChunkState.PERSISTED
+
+    engine._ensure_static_indexes()
+    assert chunk.indexes == {}
+
+
+def test_plan_index_drops_skips_static_fields():
+    config = Config(static_indexes=("service",))
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+
+    static_info = IndexInfo(
+        index_id="c1:hash:service",
+        chunk_id="c1",
+        field="service",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+        memory_bytes=1024,
+    )
+    other_info = IndexInfo(
+        index_id="c1:hash:tenant",
+        chunk_id="c1",
+        field="tenant",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+        memory_bytes=1024,
+    )
+    """View where both indexes look idle enough to drop."""
+    view = base_view(
+        now=10_000.0,
+        index_usage={"c1:hash:service": 0, "c1:hash:tenant": 0},
+        index_last_used={"c1:hash:service": 0.0, "c1:hash:tenant": 0.0},
+    )
+
+    drops = engine._plan_index_drops(view, [static_info, other_info])
+    dropped_ids = {d.index_id for d in drops}
+    assert "c1:hash:service" not in dropped_ids
+    assert "c1:hash:tenant" in dropped_ids
