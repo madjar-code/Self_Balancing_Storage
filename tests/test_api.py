@@ -31,7 +31,7 @@ async def client(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_health(client):
     ac, _ = client
-    resp = await ac.get("/health")
+    resp = await ac.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
 
@@ -39,7 +39,7 @@ async def test_health(client):
 @pytest.mark.asyncio
 async def test_post_logs(client):
     ac, _ = client
-    resp = await ac.post("/logs", json={
+    resp = await ac.post("/api/logs", json={
         "ts": 1.0, "service": "auth", "level": "INFO",
         "msg": "test", "fields": {},
     })
@@ -50,7 +50,7 @@ async def test_post_logs(client):
 @pytest.mark.asyncio
 async def test_post_logs_validation(client):
     ac, _ = client
-    resp = await ac.post("/logs", json={
+    resp = await ac.post("/api/logs", json={
         "ts": 1.0, "service": "", "level": "INFO",  # service empty
         "msg": "test", "fields": {},
     })
@@ -62,12 +62,12 @@ async def test_post_query(client):
     import asyncio as aio
     ac, _ = client
     # Ingest first
-    await ac.post("/logs", json={
+    await ac.post("/api/logs", json={
         "ts": 1.0, "service": "auth", "level": "INFO",
         "msg": "test", "fields": {},
     })
     await aio.sleep(0.2)
-    resp = await ac.post("/query", json={"q": 'service="auth"'})
+    resp = await ac.post("/api/query", json={"q": 'service="auth"'})
     assert resp.status_code == 200
     body = resp.json()
     assert body["rows_returned"] >= 1
@@ -76,15 +76,23 @@ async def test_post_query(client):
 @pytest.mark.asyncio
 async def test_query_parse_error_400(client):
     ac, _ = client
-    resp = await ac.post("/query", json={"q": "garbage syntax {"})
+    resp = await ac.post("/api/query", json={"q": "garbage syntax {"})
     assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_engine_state(client):
     ac, _ = client
-    resp = await ac.get("/engine/state")
+    resp = await ac.get("/api/engine/state")
     assert resp.status_code == 200
     body = resp.json()
     assert "write_rate" in body
     assert "n_chunks" in body
+
+
+@pytest.mark.asyncio
+async def test_api_prefix_routing(client):
+    """All endpoints live under /api/. Bare /health returns 404."""
+    ac, _ = client
+    assert (await ac.get("/api/health")).status_code == 200
+    assert (await ac.get("/health")).status_code == 404

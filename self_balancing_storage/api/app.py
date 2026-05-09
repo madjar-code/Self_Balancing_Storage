@@ -27,10 +27,10 @@ def create_app(runtime: Runtime) -> FastAPI:
     app.dependency_overrides[routes_admin.get_runtime] = _get_runtime
     app.dependency_overrides[routes_events.get_runtime] = _get_runtime
 
-    app.include_router(routes_logs.router)
-    app.include_router(routes_query.router)
-    app.include_router(routes_admin.router)
-    app.include_router(routes_events.router)
+    app.include_router(routes_logs.router, prefix="/api")
+    app.include_router(routes_query.router, prefix="/api")
+    app.include_router(routes_admin.router, prefix="/api")
+    app.include_router(routes_events.router, prefix="/api")
 
     @app.exception_handler(QueryParseError)
     async def query_parse_handler(request, exc):
