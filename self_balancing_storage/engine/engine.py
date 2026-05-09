@@ -65,6 +65,7 @@ class DecisionEngine:
         self.burst_stability = StabilityCounter(n=config.burst_stability_n)
         self.deferred_index_queue: list[BuildIndexAction] = []
         self.dropped_indexes: dict[IndexId, DroppedIndex] = {}
+        self._tick_count = 0
 
         self.event_broker = event_broker
         self.reader = reader
@@ -87,9 +88,19 @@ class DecisionEngine:
         self._stop_event.set()
 
     async def _tick(self) -> None:
+        self._tick_count += 1
+
         # Decay temperatures of all chunks. Chunks that get queried in this
         # tick will have record_access bump temp back up; idle chunks decay.
         self.tracker.cool_down_chunks([c.header.chunk_id for c in self.store.chunks])
+
+        # Periodic decay of accumulated counters (predicate frequencies and
+        # per-index usage) so stale patterns lose influence over time.
+        if (
+            self.config.decay_every_n_ticks > 0
+            and self._tick_count % self.config.decay_every_n_ticks == 0
+        ):
+            self.tracker.decay_counters(self.config.decay_factor)
 
         view = self._make_tracker_view()
         actions: list[Action] = []
@@ -135,11 +146,13 @@ class DecisionEngine:
 
         # 3. Plan drops and if not in burst - plan builds, restores, tier moves
         if not self.in_burst:
-            actions.extend(self._plan_index_restores(view))
-            actions.extend(self._plan_index_builds(view))
+            if self.config.dynamic_indexing:
+                actions.extend(self._plan_index_restores(view))
+                actions.extend(self._plan_index_builds(view))
             actions.extend(self._plan_promotes(view))
             actions.extend(self._plan_demotes(view))
-        actions.extend(self._plan_index_drops(view, index_infos))
+        if self.config.dynamic_indexing:
+            actions.extend(self._plan_index_drops(view, index_infos))
 
         # 4. Cleanup expider dropped
         self._expire_dropped(view.now)

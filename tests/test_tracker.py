@@ -83,3 +83,31 @@ def test_is_burst_after_spike():
     for _ in range(10):
         tracker.on_write(WriteEvent(ts=1.0, n_entries=1000, n_bytes=64000))
     assert tracker.is_burst() is True
+
+
+def test_decay_counters_halves_predicate_freq_and_index_usage():
+    """
+    decay_counters should reduce both predicate frequencies (top_predicates)
+    and per-index usage so old patterns lose influence.
+    """
+    tracker = AccessTracker(Config())
+    pred = Predicate("service", PredicateOp.EQ, "auth")
+    for _ in range(40):
+        tracker.on_query(QueryEvent(ts=0.0, predicates=[pred], chunks_scanned=[]))
+    for _ in range(10):
+        tracker.on_index_use("idx1", now=1.0)
+
+    tracker.decay_counters(0.5)
+
+    top = dict(tracker.top_predicates())
+    assert top.get(pred) == 20
+    assert tracker.index_usage("idx1") == 5
+
+
+def test_decay_counters_drops_indexes_that_hit_zero():
+    tracker = AccessTracker(Config())
+    tracker.on_index_use("idx1", now=1.0)  # usage=1, decays to 0
+
+    tracker.decay_counters(0.5)
+
+    assert tracker.index_usage("idx1") == 0  # gone, returns default 0

@@ -16,6 +16,7 @@ class Config:
     builds_per_tick: int = 3
 
     # === Index decisions ===
+    dynamic_indexing: bool = True
     build_threshold_freq: int = 5
     min_temp_for_index: float = 0.3
     idle_drop_sec: float = 600.0
@@ -40,6 +41,9 @@ class Config:
     ema_alpha_write_rate: float = 0.2
     ema_alpha_chunk_temp: float = 0.1
     write_window_sec: int = 60
+    # Decay accumulated counters every N engine ticks by `decay_factor`.
+    decay_every_n_ticks: int = 30
+    decay_factor: float = 0.5
 
     # === Bloom ===
     bloom_fp_rate: float = 0.01

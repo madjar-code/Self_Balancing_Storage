@@ -121,3 +121,19 @@ class AccessTracker:
 
     def predicate_last_seen_snapshot(self) -> dict[tuple[str, PredicateOp], float]:
         return dict(self._predicate_last_seen)
+
+    def decay_counters(self, factor: float) -> None:
+        """
+        Periodic decay of accumulated counters so old hot patterns fade out
+        and recent ones become visible again.
+        """
+        self._topk.decay(factor)
+        to_delete: list[IndexId] = []
+        for iid, usage in self._index_usage.items():
+            new_usage = int(usage * factor)
+            if new_usage <= 0:
+                to_delete.append(iid)
+            else:
+                self._index_usage[iid] = new_usage
+        for iid in to_delete:
+            del self._index_usage[iid]

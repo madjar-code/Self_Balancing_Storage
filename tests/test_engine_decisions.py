@@ -8,6 +8,7 @@ from self_balancing_storage.engine.actions import (
 from self_balancing_storage.engine.decisions import (
     IndexInfo,
     TrackerView,
+    choose_index_type,
     plan_memory_relief,
     should_build_index,
     should_drop_index,
@@ -28,7 +29,12 @@ class FakeChunk:
         state_obj = type("S", (), {"value": state})()
         self.header = type(
             "H", (),
-            {"chunk_id": chunk_id, "schema_sketch": schema, "state": state_obj},
+            {
+                "chunk_id": chunk_id,
+                "schema_sketch": schema,
+                "state": state_obj,
+                "persisted_at": None,
+            },
         )()
         self.tier = tier
 
@@ -278,3 +284,21 @@ def test_relief_critical_demotes_all_hot_and_keeps_top_3_indexes():
     drops = [a for a in actions if isinstance(a, DropIndexAction)]
     assert len(demotes) == 4  # all hot chunks demoted
     assert len(drops) == 7    # all indexes but top-3 dropped
+
+
+# === choose_index_type ===
+
+def test_choose_index_type_eq_picks_hash_even_for_id_fields():
+    """V2 picks Hash for any equality predicate (no Bloom auto-build)."""
+    p = Predicate("trace_id", PredicateOp.EQ, "abc")
+    assert choose_index_type(p, {}) == IndexType.HASH
+
+
+def test_choose_index_type_range_on_ts_picks_skip():
+    p = Predicate("ts", PredicateOp.RANGE, (0.0, 100.0))
+    assert choose_index_type(p, {}) == IndexType.SKIP
+
+
+def test_choose_index_type_range_on_other_field_falls_back_to_hash():
+    p = Predicate("user_no", PredicateOp.RANGE, (1, 50))
+    assert choose_index_type(p, {}) == IndexType.HASH

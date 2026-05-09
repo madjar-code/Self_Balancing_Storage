@@ -117,3 +117,15 @@ class MisraGries:
 
     def estimate(self, key: Any) -> int:
         return self._counters.get(key, 0)
+
+    def decay(self, factor: float) -> None:
+        """Multiply every counter by `factor` and drop entries that hit zero."""
+        to_delete: list[Any] = []
+        for k, v in self._counters.items():
+            new_v = int(v * factor)
+            if new_v <= 0:
+                to_delete.append(k)
+            else:
+                self._counters[k] = new_v
+        for k in to_delete:
+            del self._counters[k]

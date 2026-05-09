@@ -112,3 +112,30 @@ def test_misra_gries_capacity_limited_to_k():
         mg.add(f"x{i}")
     # internal slot count must never exceed k
     assert len(mg.top()) <= 3
+
+
+def test_misra_gries_decay_halves_counters():
+    mg = MisraGries(k=5)
+    for _ in range(40):
+        mg.add("HOT")
+    for _ in range(10):
+        mg.add("warm")
+    mg.decay(0.5)
+    counts = dict(mg.top())
+    assert counts.get("HOT") == 20
+    assert counts.get("warm") == 5
+
+
+def test_misra_gries_decay_drops_zero_counters():
+    """
+    With factor 0.5, a counter of 1 becomes 0 (int truncation) and the
+    entry is removed entirely.
+    """
+    mg = MisraGries(k=5)
+    mg.add("once")
+    mg.add("twice")
+    mg.add("twice")
+    mg.decay(0.5)
+    keys = [k for k, _ in mg.top()]
+    assert "once" not in keys
+    assert "twice" in keys

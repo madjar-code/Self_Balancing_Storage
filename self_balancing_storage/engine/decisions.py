@@ -219,10 +219,4 @@ def choose_index_type(
 ) -> IndexType:
     if predicate.op == PredicateOp.RANGE and predicate.field == "ts":
         return IndexType.SKIP
-    if predicate.op == PredicateOp.EQ:
-        # ID-like fields → bloom (high cardinality)
-        if predicate.field.endswith("_id"):
-            return IndexType.BLOOM
-        return IndexType.HASH
-    # default → HASH
     return IndexType.HASH
