@@ -75,6 +75,14 @@ class Runtime:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
+        # Wait for any in-flight seal/persist tasks to finish so their
+        # data lands on disk before we stop the WAL.
+        if self.store._pending_seal_tasks:
+            await asyncio.gather(
+                *list(self.store._pending_seal_tasks),
+                return_exceptions=True,
+            )
+
         # Drain open chunk so its entries land on disk before WAL stops.
         if self.store.chunks:
             last = self.store.chunks[-1]
@@ -175,9 +183,11 @@ class Runtime:
         })
 
     async def _on_chunk_persisted(self, chunk_id: ChunkId) -> None:
-        # Simple V2: truncate entire WAL after persistence
-        # (works because we have one open chunk at a time)
-        await self.wal.truncate()
+        # Compact the WAL: drop everything that is now safely on disk,
+        # but keep entries belonging to the currently-open chunk so a
+        # crash before its seal does not lose them.
+        keep = list(self.store._open_chunk.entries) if self.store._open_chunk else []
+        await self.wal.compact(keep)
         self.event_broker.publish({
             "type": "chunk_persisted", "ts": time.time(), "chunk_id": chunk_id,
         })

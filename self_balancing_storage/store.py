@@ -27,6 +27,7 @@ class ChunkStore:
         self._on_chunk_sealed = on_chunk_sealed
         self._open_chunk: Chunk | None = None
         self._next_seq = 1
+        self._pending_seal_tasks: set = set()
 
     def append(self, entry: LogEntry, now: float | None = None) -> None:
         now = now if now is not None else time.time()
@@ -61,7 +62,9 @@ class ChunkStore:
         self._open_chunk = None
         if self._on_chunk_sealed is not None:
             import asyncio
-            asyncio.create_task(self._on_chunk_sealed(chunk.header.chunk_id))
+            task = asyncio.create_task(self._on_chunk_sealed(chunk.header.chunk_id))
+            self._pending_seal_tasks.add(task)
+            task.add_done_callback(self._pending_seal_tasks.discard)
 
     def find(
         self,

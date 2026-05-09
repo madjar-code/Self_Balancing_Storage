@@ -101,3 +101,31 @@ class WAL:
                 await self._file.close()
             self.path.unlink(missing_ok=True)
             self._file = await aiofiles.open(self.path, "ab")
+
+    async def compact(self, keep_entries: list[LogEntry]) -> None:
+        """Replace WAL contents with `keep_entries` only.
+
+        Used after a chunk is persisted: drop everything from the WAL,
+        but re-add entries belonging to the still-open chunk so they
+        survive a crash before the next chunk is sealed.
+        """
+        async with self._lock:
+            self._buffer.clear()
+            if self._file is not None:
+                await self._file.close()
+            self.path.unlink(missing_ok=True)
+            self._file = await aiofiles.open(self.path, "ab")
+            for entry in keep_entries:
+                line = json.dumps({
+                    "ts": entry.ts,
+                    "service": entry.service,
+                    "level": entry.level,
+                    "msg": entry.msg,
+                    "fields": entry.fields,
+                }).encode() + b"\n"
+                await self._file.write(line)
+            await self._file.flush()
+            try:
+                os.fsync(self._file.fileno())
+            except OSError:
+                pass
