@@ -83,8 +83,10 @@ async def test_execute_limit(populated_store):
 
 @pytest.mark.asyncio
 async def test_execute_uses_index_when_available(populated_store_with_hash_index):
-    """With a HashIndex on `service`, executor should consult it and
-    report the index_id in the third return value."""
+    """
+    With a HashIndex on `service`, executor should consult it and
+    report the index_id in the third return value.
+    """
     plan = plan_query(parse('service="auth"'), populated_store_with_hash_index)
     results, scanned, used = await execute(plan, populated_store_with_hash_index)
     assert all(e.service == "auth" for e in results)
@@ -93,8 +95,10 @@ async def test_execute_uses_index_when_available(populated_store_with_hash_index
 
 @pytest.mark.asyncio
 async def test_execute_bloom_post_filter(populated_store_with_bloom):
-    """BloomIndex(precise=False): lookup may return all positions, but
-    post-filter must narrow to actual matches."""
+    """
+    BloomIndex(precise=False): lookup may return all positions, but
+    post-filter must narrow to actual matches.
+    """
     plan = plan_query(parse('trace_id="trace-7"'), populated_store_with_bloom)
     results, _, used = await execute(plan, populated_store_with_bloom)
     assert all(e.fields.get("trace_id") == "trace-7" for e in results)

@@ -43,9 +43,11 @@ async def test_truncate_clears_log(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_compact_keeps_specified_entries(tmp_path: Path):
-    """compact() drops everything from the log but rewrites the entries we
-    asked to keep -- used to preserve open-chunk data after a peer chunk's
-    persist would otherwise wipe the WAL wholesale."""
+    """
+    compact() drops everything from the log but rewrites the entries we
+    asked to keep - used to preserve open-chunk data after a peer chunk's
+    persist would otherwise wipe the WAL wholesale.
+    """
     log_path = tmp_path / "wal.log"
     wal = WAL(log_path, fsync_interval_ms=10)
     await wal.start()

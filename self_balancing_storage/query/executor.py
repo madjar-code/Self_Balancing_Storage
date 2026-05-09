@@ -132,6 +132,8 @@ async def execute(
             positions = _evaluate_positions(chunk, entries, p["expr"], chunk_used)
 
         used_indexes.extend(chunk_used)
+        if positions is None:
+            continue
         for pos in sorted(positions):
             results.append(entries[pos])
 

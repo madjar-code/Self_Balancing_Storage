@@ -183,7 +183,7 @@ async def phase_f_resume(rt: Runtime, duration: float) -> None:
 
 
 def _short_index_id(iid: str) -> str:
-    """Strip chunk_id prefix: 'chunk_000552_xxx:bloom:trace_id' -> 'bloom:trace_id'."""
+    """Strip chunk_id prefix: 'chunk_000552_xxx:bloom:trace_id' becomes 'bloom:trace_id'."""
     parts = iid.split(":", 2)
     return ":".join(parts[1:]) if len(parts) > 1 else iid
 

@@ -145,7 +145,7 @@ def should_evict_heavy_index(info: IndexInfo, view: TrackerView, config: Config)
     return view.memory_pressure > config.mem_pressure_drop and idle > 60
 
 
-def compute_roi(usage: int, memory_bytes: int, tier: "Tier" = None, config: Config = None) -> float:
+def compute_roi(usage: int, memory_bytes: int, tier: "Tier | None" = None, config: Config | None = None) -> float:
     """Tier-aware ROI. If tier is None, falls back to V1 hot-only formula."""
     if usage <= 0:
         return 0.0

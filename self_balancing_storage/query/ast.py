@@ -1,8 +1,8 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Any, Literal, Union
+from dataclasses import dataclass
+from typing import Literal, Union
 
-from ..types import PredicateOp, Predicate
+from ..types import Predicate
 
 
 @dataclass(frozen=True)

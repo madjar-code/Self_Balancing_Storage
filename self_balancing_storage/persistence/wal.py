@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import aiofiles
+from aiofiles.threadpool.binary import AsyncBufferedIOBase
 
 from ..types import LogEntry
 
@@ -24,7 +25,7 @@ class WAL:
         self._lock = asyncio.Lock()
         self._stopped = False
         self._flush_task: asyncio.Task | None = None
-        self._file = None
+        self._file: AsyncBufferedIOBase | None = None
 
     async def start(self) -> None:
         self._file = await aiofiles.open(self.path, "ab")
@@ -103,7 +104,8 @@ class WAL:
             self._file = await aiofiles.open(self.path, "ab")
 
     async def compact(self, keep_entries: list[LogEntry]) -> None:
-        """Replace WAL contents with `keep_entries` only.
+        """
+        Replace WAL contents with `keep_entries` only.
 
         Used after a chunk is persisted: drop everything from the WAL,
         but re-add entries belonging to the still-open chunk so they
@@ -115,6 +117,7 @@ class WAL:
                 await self._file.close()
             self.path.unlink(missing_ok=True)
             self._file = await aiofiles.open(self.path, "ab")
+            assert self._file is not None
             for entry in keep_entries:
                 line = json.dumps({
                     "ts": entry.ts,

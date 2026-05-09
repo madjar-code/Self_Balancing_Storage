@@ -120,7 +120,8 @@ def _extract_field(entry: LogEntry, name: str) -> Any:
 
 
 def make_matcher(predicate: Predicate):
-    """Build a per-entry checker once, reuse it inside the scan loop.
+    """
+    Build a per-entry checker once, reuse it inside the scan loop.
 
     Avoids re-dispatching predicate.op and re-resolving the field accessor
     on every entry comparison.

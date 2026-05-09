@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import time
 from typing import Awaitable, Callable
 
@@ -27,7 +28,7 @@ class ChunkStore:
         self._on_chunk_sealed = on_chunk_sealed
         self._open_chunk: Chunk | None = None
         self._next_seq = 1
-        self._pending_seal_tasks: set = set()
+        self._pending_seal_tasks: set[asyncio.Task[None]] = set()
 
     def append(self, entry: LogEntry, now: float | None = None) -> None:
         now = now if now is not None else time.time()
@@ -61,8 +62,8 @@ class ChunkStore:
         chunk.seal()
         self._open_chunk = None
         if self._on_chunk_sealed is not None:
-            import asyncio
-            task = asyncio.create_task(self._on_chunk_sealed(chunk.header.chunk_id))
+            coro = self._on_chunk_sealed(chunk.header.chunk_id)
+            task: asyncio.Task[None] = asyncio.create_task(coro)  # type: ignore[arg-type]
             self._pending_seal_tasks.add(task)
             task.add_done_callback(self._pending_seal_tasks.discard)
 

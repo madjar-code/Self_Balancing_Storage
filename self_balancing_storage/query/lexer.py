@@ -44,21 +44,29 @@ def tokenize(text: str) -> list[Token]:
             t, pos = _read_operator(text, pos)
             tokens.append(t)
         elif c == "(":
-            tokens.append(Token("LPAREN", "(", pos)); pos += 1
+            tokens.append(Token("LPAREN", "(", pos))
+            pos += 1
         elif c == ")":
-            tokens.append(Token("RPAREN", ")", pos)); pos += 1
+            tokens.append(Token("RPAREN", ")", pos))
+            pos += 1
         elif c == "{":
-            tokens.append(Token("LBRACE", "{", pos)); pos += 1
+            tokens.append(Token("LBRACE", "{", pos))
+            pos += 1
         elif c == "}":
-            tokens.append(Token("RBRACE", "}", pos)); pos += 1
+            tokens.append(Token("RBRACE", "}", pos))
+            pos += 1
         elif c == "[":
-            tokens.append(Token("LBRACK", "[", pos)); pos += 1
+            tokens.append(Token("LBRACK", "[", pos))
+            pos += 1
         elif c == "]":
-            tokens.append(Token("RBRACK", "]", pos)); pos += 1
+            tokens.append(Token("RBRACK", "]", pos))
+            pos += 1
         elif c == ",":
-            tokens.append(Token("COMMA", ",", pos)); pos += 1
+            tokens.append(Token("COMMA", ",", pos))
+            pos += 1
         elif c == "|":
-            tokens.append(Token("PIPE", "|", pos)); pos += 1
+            tokens.append(Token("PIPE", "|", pos))
+            pos += 1
         else:
             raise LexerError(f"unexpected character {c!r}", pos)
     tokens.append(Token("EOF", "", pos))

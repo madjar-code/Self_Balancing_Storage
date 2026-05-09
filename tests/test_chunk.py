@@ -1,9 +1,11 @@
+from typing import Any
+
 from self_balancing_storage.chunk import _extract_field, make_matcher
 from self_balancing_storage.types import LogEntry, Predicate, PredicateOp
 
 
-def make_entry(**kwargs) -> LogEntry:
-    defaults = dict(ts=1.0, service="a", level="INFO", msg="m", fields={})
+def make_entry(**kwargs: Any) -> LogEntry:
+    defaults: dict[str, Any] = dict(ts=1.0, service="a", level="INFO", msg="m", fields={})
     defaults.update(kwargs)
     return LogEntry(**defaults)
 

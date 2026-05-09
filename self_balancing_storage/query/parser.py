@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Literal
+from typing import Any, Literal
 
 from ..types import Predicate, PredicateOp
 from .ast import And, Expr, Not, Or, Query
@@ -152,13 +152,13 @@ class Parser:
             self.consume("RBRACK")
             return Predicate(field=field_tok.value, op=PredicateOp.IN, value=values)
         # comparison
-        op_tok = self.consume("OP")
+        self.consume("OP")
         v_tok = self.advance()
-        value = v_tok.value
+        value: Any = v_tok.value
         if v_tok.type == "NUMBER":
             value = float(value)
         return Predicate(field=field_tok.value, op=PredicateOp.EQ, value=value)
-        # NOTE: simplified — full impl would distinguish !=, =~, !~ via Not wrapping or different op enum
+        # NOTE: simplified - full impl would distinguish !=, =~, !~ via Not wrapping or different op enum
 
     def _parse_last(self) -> tuple[float, float]:
         import time as _time

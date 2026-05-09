@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import time
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import AsyncIterator
 
 from .config import Config
 from .engine.engine import DecisionEngine

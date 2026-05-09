@@ -334,7 +334,7 @@ async def test_apply_build_skips_cold_chunk():
 
 @pytest.mark.asyncio
 async def test_apply_build_skips_open_chunk():
-    """Open chunks have no schema yet -- build is no-op."""
+    """Open chunks have no schema yet - build is no-op."""
     config = Config()
     tracker = AccessTracker(config)
     store = ChunkStore(config)

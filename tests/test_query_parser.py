@@ -1,6 +1,6 @@
 import pytest
 
-from self_balancing_storage.query.ast import And, Or, Not, Query
+from self_balancing_storage.query.ast import And, Or
 from self_balancing_storage.query.parser import parse, QueryParseError
 from self_balancing_storage.types import Predicate, PredicateOp
 

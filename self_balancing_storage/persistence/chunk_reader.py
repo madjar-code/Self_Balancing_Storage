@@ -68,7 +68,7 @@ class ChunkReader:
     async def load_entries(self, chunk_id: ChunkId) -> list[LogEntry]:
         path = self.cold_path / chunk_id / "entries.jsonl.gz"
         if not path.exists():
-            return ()
+            return []
         return await asyncio.to_thread(self._read_entries_sync, path)
 
     @staticmethod
