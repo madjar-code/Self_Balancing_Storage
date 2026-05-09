@@ -1,6 +1,8 @@
 from __future__ import annotations
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 from ..runtime import Runtime
@@ -42,5 +44,9 @@ def create_app(runtime: Runtime) -> FastAPI:
                 "position": exc.position,
             },
         )
+
+    static_dir = os.environ.get("SBS_STATIC_DIR", "static")
+    if os.path.isdir(static_dir):
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="ui")
 
     return app
