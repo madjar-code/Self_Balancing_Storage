@@ -50,19 +50,18 @@ async def chunks(runtime: Runtime = Depends(get_runtime)) -> list[dict]:
 @router.get("/indexes")
 async def indexes(runtime: Runtime = Depends(get_runtime)) -> list[dict]:
     out: list[dict] = []
-    for chunk in runtime.store.chunks:
-        for iid, idx in chunk.indexes.items():
-            out.append({
-                "index_id": iid,
-                "chunk_id": chunk.header.chunk_id,
-                "type": _index_type_name(idx),
-                "field": idx.field,
-                "op": idx.op.value if idx.op is not None else None,
-                "memory_bytes": idx.memory_bytes,
-                "usage": runtime.tracker.index_usage(iid),
-                "last_used": runtime.tracker.index_last_used(iid),
-                "status": "active",
-            })
+    for info in runtime.engine.collect_index_infos():
+        out.append({
+            "index_id": info.index_id,
+            "chunk_id": info.chunk_id,
+            "type": info.index_type.value,
+            "field": info.field,
+            "op": info.op.value,
+            "memory_bytes": info.memory_bytes,
+            "usage": runtime.tracker.index_usage(info.index_id),
+            "last_used": runtime.tracker.index_last_used(info.index_id),
+            "status": "active",
+        })
     for iid, d in runtime.engine.dropped_indexes.items():
         out.append({
             "index_id": iid,
@@ -78,20 +77,6 @@ async def indexes(runtime: Runtime = Depends(get_runtime)) -> list[dict]:
             "prior_usage": d.prior_usage,
         })
     return out
-
-
-def _index_type_name(idx) -> str:
-    """Map an index instance to its public type string."""
-    from ..indexes.hash_index import HashIndex
-    from ..indexes.skip_index import SkipIndex
-    from ..indexes.bloom import BloomIndex
-    if isinstance(idx, HashIndex):
-        return "hash"
-    if isinstance(idx, SkipIndex):
-        return "skip"
-    if isinstance(idx, BloomIndex):
-        return "bloom"
-    return "unknown"
 
 
 @router.get("/tracker/top-predicates")

@@ -106,7 +106,7 @@ class DecisionEngine:
         actions: list[Action] = []
 
         # 1. Memory relief - highest priority
-        index_infos = self._collect_index_infos()
+        index_infos = self.collect_index_infos()
         actions.extend(
             plan_memory_relief(
                 view,
@@ -255,7 +255,7 @@ class DecisionEngine:
             predicate_last_seen=self.tracker.predicate_last_seen_snapshot(),
         )
 
-    def _collect_index_infos(self) -> list[IndexInfo]:
+    def collect_index_infos(self) -> list[IndexInfo]:
         infos: list[IndexInfo] = []
         for chunk in self.store.chunks:
             for iid, idx in chunk.indexes.items():

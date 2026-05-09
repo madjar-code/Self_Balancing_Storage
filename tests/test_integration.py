@@ -34,5 +34,5 @@ async def test_end_to_end_basic(tmp_path):
 
         # at least one index should appear somewhere
         any_index = any(c.indexes for c in rt.store.chunks)
-        print(rt.engine._collect_index_infos())
+        print(rt.engine.collect_index_infos())
         assert any_index
