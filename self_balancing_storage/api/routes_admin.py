@@ -92,3 +92,19 @@ def _index_type_name(idx) -> str:
     if isinstance(idx, BloomIndex):
         return "bloom"
     return "unknown"
+
+
+@router.get("/tracker/top-predicates")
+async def top_predicates(
+    k: int = 20,
+    runtime: Runtime = Depends(get_runtime),
+) -> list[dict]:
+    return [
+        {
+            "field": p.field,
+            "op": p.op.value,
+            "value": p.value,
+            "freq": freq,
+        }
+        for p, freq in runtime.tracker.top_predicates(k=k)
+    ]

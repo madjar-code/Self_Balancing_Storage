@@ -150,3 +150,29 @@ async def test_get_indexes_returns_active_and_dropped(client):
     assert dropped["field"] == "tenant"
     assert dropped["dropped_at"] == 42.0
     assert dropped["prior_usage"] == 7
+
+
+@pytest.mark.asyncio
+async def test_top_predicates_returns_sorted_by_freq(client):
+    """Endpoint returns predicates ordered by frequency desc."""
+    from self_balancing_storage.types import Predicate, PredicateOp
+    from self_balancing_storage.tracker.tracker import QueryEvent
+
+    ac, runtime = client
+    hot = Predicate("service", PredicateOp.EQ, "auth")
+    warm = Predicate("level", PredicateOp.EQ, "ERROR")
+
+    for _ in range(20):
+        runtime.tracker.on_query(QueryEvent(ts=0.0, predicates=[hot], chunks_scanned=[]))
+    for _ in range(5):
+        runtime.tracker.on_query(QueryEvent(ts=0.0, predicates=[warm], chunks_scanned=[]))
+
+    resp = await ac.get("/api/tracker/top-predicates")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) >= 2
+    assert body[0]["field"] == "service"
+    assert body[0]["value"] == "auth"
+    assert body[0]["freq"] >= 20
+    fields = [p["field"] for p in body]
+    assert fields.index("service") < fields.index("level")
