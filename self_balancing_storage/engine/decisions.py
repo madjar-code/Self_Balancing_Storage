@@ -118,6 +118,9 @@ def should_demote_chunk(chunk: Chunk, view: TrackerView, config: Config) -> bool
         return False
     if chunk.header.state.value != "persisted":
         return False
+    persisted_at = chunk.header.persisted_at
+    if persisted_at is not None and (view.now - persisted_at) < config.demote_grace_sec:
+        return False
     temp = view.chunk_temperatures.get(chunk.header.chunk_id, 0.0)
     if temp >= config.demote_threshold:
         return False

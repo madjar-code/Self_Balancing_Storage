@@ -58,6 +58,7 @@ class Config:
     disk_cost_factor: int = 100
     demote_threshold: float = 0.1
     demote_idle_sec: float = 300.0
+    demote_grace_sec: float = 30.0
     promote_threshold: float = 0.5
 
     # === HTTP API ===

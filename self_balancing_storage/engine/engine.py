@@ -351,6 +351,12 @@ class DecisionEngine:
         chunk = self._find_chunk(action.chunk_id)
         if chunk is None:
             return
+        if chunk.tier == Tier.COLD:
+            return
+        if chunk.header.state.value == "open":
+            return
+        if not chunk.entries:
+            return
         idx = _make_index(
             chunk,
             action.field,

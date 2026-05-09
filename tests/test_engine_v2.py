@@ -4,6 +4,7 @@ import pytest
 
 from self_balancing_storage.config import Config
 from self_balancing_storage.engine.actions import (
+    BuildIndexAction,
     DemoteChunkAction,
     EvictHeavyIndexAction,
     PromoteChunkAction,
@@ -33,7 +34,13 @@ class FakeChunk:
     def __init__(self, chunk_id: str, tier: Tier = Tier.HOT, state: str = "persisted"):
         state_obj = type("S", (), {"value": state})()
         self.header = type(
-            "H", (), {"chunk_id": chunk_id, "schema_sketch": {}, "state": state_obj},
+            "H", (),
+            {
+                "chunk_id": chunk_id,
+                "schema_sketch": {},
+                "state": state_obj,
+                "persisted_at": None,
+            },
         )()
         self.tier = tier
 
@@ -274,3 +281,94 @@ async def test_apply_evict_heavy_pops_index_and_records_on_disk():
     assert idx.index_id in chunk.header.indexes_on_disk
     decision_events = [e for e in broker.events if e["type"] == "decision"]
     assert any(e.get("action") == "evict_heavy_index" for e in decision_events)
+
+
+# === demote grace period after persist ===
+
+def test_demote_false_for_recently_persisted_chunk():
+    """A chunk persisted within demote_grace_sec should not be demoted yet."""
+    config = Config(demote_threshold=0.1, demote_idle_sec=10.0, demote_grace_sec=30.0)
+    chunk = FakeChunk("c1", tier=Tier.HOT, state="persisted")
+    chunk.header.persisted_at = 990.0  # 10s before view.now=1000, within grace
+    view = base_view(now=1000.0)
+    assert should_demote_chunk(chunk, view, config) is False
+
+
+def test_demote_true_after_grace_period_elapses():
+    """After grace period, the usual idle/temp checks decide."""
+    config = Config(demote_threshold=0.1, demote_idle_sec=10.0, demote_grace_sec=30.0)
+    chunk = FakeChunk("c1", tier=Tier.HOT, state="persisted")
+    chunk.header.persisted_at = 900.0  # 100s before view.now=1000, way past grace
+    view = base_view(
+        now=1000.0,
+        chunk_temperatures={"c1": 0.0},
+        chunk_last_access={"c1": 900.0},  # idle 100s > 10
+    )
+    assert should_demote_chunk(chunk, view, config) is True
+
+
+# === _apply_build defensive guards ===
+
+@pytest.mark.asyncio
+async def test_apply_build_skips_cold_chunk():
+    """If the chunk turned cold between planning and apply, build is no-op."""
+    config = Config()
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(3):
+        store.append(LogEntry(ts=float(i), service="a", level="INFO", msg="m"))
+    chunk = store.chunks[0]
+    chunk.header.state = ChunkState.PERSISTED
+    chunk.tier = Tier.COLD
+    chunk.entries = []
+
+    await engine._apply_build(BuildIndexAction(
+        chunk_id=chunk.header.chunk_id,
+        field="service",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+    ))
+    assert chunk.indexes == {}
+
+
+@pytest.mark.asyncio
+async def test_apply_build_skips_open_chunk():
+    """Open chunks have no schema yet -- build is no-op."""
+    config = Config()
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    store.append(LogEntry(ts=0.0, service="a", level="INFO", msg="m"), now=0.0)
+    chunk = store.chunks[0]
+    chunk.header.state = ChunkState.OPEN  # explicitly keep open for the test
+
+    await engine._apply_build(BuildIndexAction(
+        chunk_id=chunk.header.chunk_id,
+        field="service",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+    ))
+    assert chunk.indexes == {}
+
+
+@pytest.mark.asyncio
+async def test_apply_build_skips_chunk_with_empty_entries():
+    """Persisted-but-emptied chunk (e.g. recently demoted) is no-op."""
+    config = Config()
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(3):
+        store.append(LogEntry(ts=float(i), service="a", level="INFO", msg="m"))
+    chunk = store.chunks[0]
+    chunk.header.state = ChunkState.PERSISTED
+    chunk.entries = []  # forced empty, tier still HOT
+
+    await engine._apply_build(BuildIndexAction(
+        chunk_id=chunk.header.chunk_id,
+        field="service",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+    ))
+    assert chunk.indexes == {}
