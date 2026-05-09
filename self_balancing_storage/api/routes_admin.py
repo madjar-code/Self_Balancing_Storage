@@ -46,3 +46,49 @@ async def chunks(runtime: Runtime = Depends(get_runtime)) -> list[dict]:
         }
         for c in runtime.store.chunks
     ]
+
+@router.get("/indexes")
+async def indexes(runtime: Runtime = Depends(get_runtime)) -> list[dict]:
+    out: list[dict] = []
+    for chunk in runtime.store.chunks:
+        for iid, idx in chunk.indexes.items():
+            out.append({
+                "index_id": iid,
+                "chunk_id": chunk.header.chunk_id,
+                "type": _index_type_name(idx),
+                "field": idx.field,
+                "op": idx.op.value if idx.op is not None else None,
+                "memory_bytes": idx.memory_bytes,
+                "usage": runtime.tracker.index_usage(iid),
+                "last_used": runtime.tracker.index_last_used(iid),
+                "status": "active",
+            })
+    for iid, d in runtime.engine.dropped_indexes.items():
+        out.append({
+            "index_id": iid,
+            "chunk_id": d.chunk_id,
+            "type": d.index_type.value,
+            "field": d.field,
+            "op": d.op.value,
+            "memory_bytes": 0,
+            "usage": 0,
+            "last_used": None,
+            "status": "dropped",
+            "dropped_at": d.dropped_at,
+            "prior_usage": d.prior_usage,
+        })
+    return out
+
+
+def _index_type_name(idx) -> str:
+    """Map an index instance to its public type string."""
+    from ..indexes.hash_index import HashIndex
+    from ..indexes.skip_index import SkipIndex
+    from ..indexes.bloom import BloomIndex
+    if isinstance(idx, HashIndex):
+        return "hash"
+    if isinstance(idx, SkipIndex):
+        return "skip"
+    if isinstance(idx, BloomIndex):
+        return "bloom"
+    return "unknown"

@@ -96,3 +96,57 @@ async def test_api_prefix_routing(client):
     ac, _ = client
     assert (await ac.get("/api/health")).status_code == 200
     assert (await ac.get("/health")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_indexes_returns_active_and_dropped(client):
+    """Endpoint returns both active per-chunk indexes and engine.dropped_indexes."""
+    import asyncio as aio
+    from self_balancing_storage.engine.actions import DroppedIndex
+    from self_balancing_storage.types import IndexType, PredicateOp
+    from self_balancing_storage.indexes.hash_index import HashIndex
+
+    ac, runtime = client
+
+    # Ingest a couple of entries so the open chunk has data, then seal it.
+    for ts in (1.0, 2.0):
+        await ac.post("/api/logs", json={
+            "ts": ts, "service": "auth", "level": "INFO",
+            "msg": "m", "fields": {},
+        })
+    await aio.sleep(0.2)
+    runtime.store._seal_open_chunk()
+    chunk = runtime.store.chunks[0]
+
+    # Build one active index on the sealed chunk.
+    idx = HashIndex(chunk_id=chunk.header.chunk_id, field="service")
+    idx.build(chunk.entries)
+    chunk.indexes[idx.index_id] = idx
+
+    # Plant one dropped index entry on the engine.
+    runtime.engine.dropped_indexes["chunk_xx:hash:tenant"] = DroppedIndex(
+        index_id="chunk_xx:hash:tenant",
+        chunk_id="chunk_xx",
+        field="tenant",
+        op=PredicateOp.EQ,
+        index_type=IndexType.HASH,
+        dropped_at=42.0,
+        prior_usage=7,
+    )
+
+    resp = await ac.get("/api/indexes")
+    assert resp.status_code == 200
+    body = resp.json()
+    statuses = {item["status"] for item in body}
+    assert statuses == {"active", "dropped"}
+
+    active = next(item for item in body if item["status"] == "active")
+    assert active["field"] == "service"
+    assert active["type"] == "hash"
+    assert active["chunk_id"] == chunk.header.chunk_id
+    assert active["memory_bytes"] > 0
+
+    dropped = next(item for item in body if item["status"] == "dropped")
+    assert dropped["field"] == "tenant"
+    assert dropped["dropped_at"] == 42.0
+    assert dropped["prior_usage"] == 7
