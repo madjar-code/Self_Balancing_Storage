@@ -1,6 +1,7 @@
 import styled from 'styled-components';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { DecisionsProvider } from '../../context/DecisionsContext';
 
 const Layout = styled.div`
   display: flex;
@@ -15,11 +16,13 @@ const Main = styled.main`
 
 export function AppShell() {
   return (
-    <Layout>
-      <Sidebar />
-      <Main>
-        <Outlet />
-      </Main>
-    </Layout>
+    <DecisionsProvider>
+      <Layout>
+        <Sidebar />
+        <Main>
+          <Outlet />
+        </Main>
+      </Layout>
+    </DecisionsProvider>
   );
 }
