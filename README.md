@@ -66,3 +66,54 @@ Type-checking and lint:
 uv run mypy self_balancing_storage
 uv run ruff check
 ```
+
+## Dashboard UI
+
+The dashboard lives in `ui/` (React + TypeScript + Vite). It can run standalone against the FastAPI backend during development, or be built into `static/` and served by FastAPI on a single port.
+
+### One-time setup
+
+```bash
+cd ui
+npm install
+```
+
+### Development (two processes)
+
+Backend:
+
+```bash
+uv run python -m self_balancing_storage.main
+```
+
+Frontend dev server (proxies `/api/*` to `:8000`):
+
+```bash
+cd ui
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+### Production build
+
+```bash
+cd ui
+npm run build
+```
+
+The bundle is written to `static/` at the repo root. Then run only the backend:
+
+```bash
+uv run python -m self_balancing_storage.main
+```
+
+Open `http://localhost:8000`.
+
+### Pages
+
+- `/` — Overview: stat cards (write rate, burst ratio, memory pressure) with sparklines, chunks heatmap, recent decisions.
+- `/chunks` — Filterable chunks list (grid or table).
+- `/indexes` — Aggregated index stats, top predicates, sortable index table.
+- `/decisions` — Full SSE-driven decisions feed with type filters.
+- `/query` — Execute a parsed query and see results + latency.
