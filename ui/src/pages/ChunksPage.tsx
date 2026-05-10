@@ -6,15 +6,11 @@ import { TierBadge } from '../components/badges/TierBadge';
 import { StateBadge } from '../components/badges/StateBadge';
 import { formatRelative } from '../lib/format';
 
+import { sortChunksOpenFirst } from '../lib/sortChunks';
+
 type Tier = 'all' | 'hot' | 'cold';
 type State = 'all' | 'open' | 'sealed' | 'persisted';
 type View = 'grid' | 'table';
-
-const STATE_ORDER: Record<string, number> = {
-  open: 0,
-  sealed: 1,
-  persisted: 2,
-};
 
 const Bar = styled.div`
   display: flex;
@@ -65,18 +61,12 @@ export default function ChunksPage() {
   const [state, setState] = useState<State>('all');
   const [view, setView] = useState<View>('grid');
 
-  const filtered = data
-    .filter(c =>
+  const filtered = sortChunksOpenFirst(
+    data.filter(c =>
       (tier === 'all' || c.tier === tier) &&
       (state === 'all' || c.state === state),
-    )
-    .slice()
-    .sort((a, b) => {
-      const sa = STATE_ORDER[a.state] ?? 99;
-      const sb = STATE_ORDER[b.state] ?? 99;
-      if (sa !== sb) return sa - sb;
-      return b.ts_min - a.ts_min;
-    });
+    ),
+  );
 
   return (
     <div>

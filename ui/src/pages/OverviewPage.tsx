@@ -10,6 +10,7 @@ import { HeatmapGrid } from '../components/HeatmapGrid';
 import { DecisionsFeed } from '../components/DecisionsFeed';
 import { tokens } from '../theme/tokens';
 import { pressureColor } from '../lib/color';
+import { sortChunksOpenFirst } from '../lib/sortChunks';
 
 const Row = styled.div`
   display: grid;
@@ -64,7 +65,7 @@ export default function OverviewPage() {
           value={state ? state.burst_ratio.toFixed(2) : '—'}
           subtext={state?.is_burst ? 'BURST MODE' : 'steady'}
           series={burstSeries}
-          color={tokens.accent.burst}
+          color={state?.is_burst ? tokens.accent.burst : tokens.index.hash}
         />
         <StatCard
           title="Memory pressure"
@@ -81,7 +82,7 @@ export default function OverviewPage() {
           Chunks
           <Right>{chunks.length} total • {chunks.filter(c => c.tier === 'hot').length} hot</Right>
         </SectionTitle>
-        <HeatmapGrid chunks={chunks} />
+        <HeatmapGrid chunks={sortChunksOpenFirst(chunks)} />
       </Section>
 
       <Section>
