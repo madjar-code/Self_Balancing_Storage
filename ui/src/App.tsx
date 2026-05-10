@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { GlobalStyle } from './theme/globals';
 import { AppShell } from './components/shell/AppShell';
@@ -8,8 +9,15 @@ import IndexesPage from './pages/IndexesPage';
 import DecisionsPage from './pages/DecisionsPage';
 import QueryPage from './pages/QueryPage';
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 0, refetchOnWindowFocus: false },
+  },
+});
+
 export default function App() {
   return (
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <GlobalStyle />
       <BrowserRouter>
@@ -24,5 +32,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
+    </QueryClientProvider>
   );
 }
