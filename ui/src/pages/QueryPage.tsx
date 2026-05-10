@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRunQuery } from '../api/hooks';
 import { formatMs } from '../lib/format';
 
@@ -26,6 +26,11 @@ const Button = styled.button`
   border: 1px solid ${({ theme }) => theme.border};
   border-radius: ${({ theme }) => theme.radius.sm}px;
   padding: ${({ theme }) => theme.spacing.sm}px ${({ theme }) => theme.spacing.md}px;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 const Panel = styled.div`
@@ -45,6 +50,30 @@ const Meta = styled.div`
   margin-bottom: ${({ theme }) => theme.spacing.sm}px;
 `;
 
+const Pager = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing.sm}px;
+  margin: ${({ theme }) => theme.spacing.sm}px 0;
+  font-size: 12px;
+  color: ${({ theme }) => theme.text.muted};
+  font-feature-settings: 'tnum' 1;
+`;
+
+const PageButton = styled(Button)`
+  padding: 2px 10px;
+  font-size: 12px;
+`;
+
+const PageSizeSelect = styled.select`
+  background: ${({ theme }) => theme.bg.panel};
+  color: ${({ theme }) => theme.text.fg};
+  border: 1px solid ${({ theme }) => theme.border};
+  border-radius: ${({ theme }) => theme.radius.sm}px;
+  padding: 2px 6px;
+  font: inherit;
+`;
+
 const Error = styled.pre`
   color: ${({ theme }) => theme.pressure.bad};
   background: ${({ theme }) => theme.bg.panel};
@@ -60,11 +89,31 @@ const EXAMPLES = [
   'service="billing" and level="WARN"',
 ];
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 500];
+
 export default function QueryPage() {
   const [q, setQ] = useState('service="auth-api"');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const mut = useRunQuery();
 
-  function run() { if (q.trim()) mut.mutate(q.trim()); }
+  function run() {
+    if (q.trim()) mut.mutate(q.trim());
+  }
+
+  /** Reset page when a new result lands. */
+  useEffect(() => {
+    if (mut.data) setPage(1);
+  }, [mut.data]);
+
+  const total = mut.data?.results.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const visible = useMemo(() => {
+    if (!mut.data) return [];
+    const start = (safePage - 1) * pageSize;
+    return mut.data.results.slice(start, start + pageSize);
+  }, [mut.data, safePage, pageSize]);
 
   return (
     <div>
@@ -92,9 +141,42 @@ export default function QueryPage() {
       {mut.isError && <Error>{String(mut.error)}</Error>}
       {mut.data && (
         <>
-          <Meta>{mut.data.rows_returned} rows · {formatMs(mut.data.duration_ms)}</Meta>
+          <Meta>
+            {total.toLocaleString()} rows · {formatMs(mut.data.duration_ms)}
+          </Meta>
+
+          <Pager>
+            <span>
+              Showing {((safePage - 1) * pageSize + 1).toLocaleString()}–
+              {Math.min(safePage * pageSize, total).toLocaleString()} of {total.toLocaleString()}
+            </span>
+            <span style={{ marginLeft: 'auto' }}>Page size:</span>
+            <PageSizeSelect
+              value={pageSize}
+              onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+            >
+              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+            </PageSizeSelect>
+            <PageButton onClick={() => setPage(1)} disabled={safePage <= 1}>
+              ⏮
+            </PageButton>
+            <PageButton onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage <= 1}>
+              ←
+            </PageButton>
+            <span>Page {safePage} of {totalPages}</span>
+            <PageButton
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+            >
+              →
+            </PageButton>
+            <PageButton onClick={() => setPage(totalPages)} disabled={safePage >= totalPages}>
+              ⏭
+            </PageButton>
+          </Pager>
+
           <Panel>
-            <pre style={{ margin: 0 }}>{JSON.stringify(mut.data.results, null, 2)}</pre>
+            <pre style={{ margin: 0 }}>{JSON.stringify(visible, null, 2)}</pre>
           </Panel>
         </>
       )}
