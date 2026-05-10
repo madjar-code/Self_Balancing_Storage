@@ -26,9 +26,12 @@ const StatTitle = styled.div`
 `;
 
 const StatValue = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 18px;
-  font-weight: 600;
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 `;
 
 const SectionTitle = styled.h3`

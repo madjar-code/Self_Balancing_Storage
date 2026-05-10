@@ -31,9 +31,12 @@ const Title = styled.div`
 `;
 
 const Value = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 22px;
-  font-weight: 600;
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
 `;
 
 const Subtext = styled.div`

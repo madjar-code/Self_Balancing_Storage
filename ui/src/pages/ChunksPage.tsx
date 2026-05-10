@@ -40,7 +40,8 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
 `;
 
 const Th = styled.th`

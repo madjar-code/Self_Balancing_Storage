@@ -5,8 +5,9 @@ const BadgeBase = styled.span<{ $bg: string }>`
   display: inline-block;
   padding: 1px 6px;
   border-radius: ${({ theme }) => theme.radius.sm}px;
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.sans};
   font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   background: ${({ $bg }) => $bg};

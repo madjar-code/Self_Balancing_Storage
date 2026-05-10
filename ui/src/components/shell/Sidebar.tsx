@@ -16,10 +16,11 @@ const Aside = styled.aside`
 `;
 
 const Brand = styled.div`
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.sans};
   font-size: 13px;
-  color: ${({ theme }) => theme.text.muted};
-  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: ${({ theme }) => theme.text.fg};
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   margin-bottom: ${({ theme }) => theme.spacing.lg}px;
 `;

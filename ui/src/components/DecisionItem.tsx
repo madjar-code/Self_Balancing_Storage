@@ -8,8 +8,9 @@ const Row = styled.div`
   gap: ${({ theme }) => theme.spacing.sm}px;
   padding: ${({ theme }) => theme.spacing.xs}px ${({ theme }) => theme.spacing.sm}px;
   border-bottom: 1px solid ${({ theme }) => theme.border};
-  font-size: 12px;
-  font-family: ${({ theme }) => theme.font.mono};
+  font-size: 13px;
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
 `;
 
 const Glyph = styled.span<{ $color: string }>`

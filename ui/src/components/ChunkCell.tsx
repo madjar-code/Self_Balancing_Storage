@@ -42,10 +42,12 @@ const Tooltip = styled.div<{ $top: number; $left: number }>`
   border: 1px solid ${({ theme }) => theme.border};
   border-radius: ${({ theme }) => theme.radius.sm}px;
   padding: ${({ theme }) => theme.spacing.sm}px;
-  font-family: ${({ theme }) => theme.font.mono};
-  font-size: 11px;
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
+  font-size: 12px;
+  line-height: 1.4;
   width: max-content;
-  max-width: 220px;
+  max-width: 240px;
   z-index: 1000;
 `;
 

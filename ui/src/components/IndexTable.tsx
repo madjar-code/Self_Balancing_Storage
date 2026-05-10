@@ -25,7 +25,8 @@ const Th = styled.th<{ $sortable?: boolean }>`
 const Td = styled.td`
   padding: ${({ theme }) => theme.spacing.sm}px ${({ theme }) => theme.spacing.md}px;
   border-bottom: 1px solid ${({ theme }) => theme.border};
-  font-family: ${({ theme }) => theme.font.mono};
+  font-family: ${({ theme }) => theme.font.sans};
+  font-feature-settings: 'tnum' 1;
 `;
 
 const Status = styled.span<{ $status: string }>`
