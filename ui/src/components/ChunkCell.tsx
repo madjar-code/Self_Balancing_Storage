@@ -1,4 +1,6 @@
 import styled from 'styled-components';
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChunkInfo } from '../api/types';
 import { temperatureToColor } from '../lib/color';
 import { tokens } from '../theme/tokens';
@@ -31,10 +33,10 @@ const Dot = styled.span<{ $bg: string }>`
   background: ${({ $bg }) => $bg};
 `;
 
-const Tooltip = styled.div`
-  position: absolute;
-  top: 110%;
-  left: 0;
+const Tooltip = styled.div<{ $top: number; $left: number }>`
+  position: fixed;
+  top: ${({ $top }) => $top}px;
+  left: ${({ $left }) => $left}px;
   pointer-events: none;
   background: ${({ theme }) => theme.bg.elev};
   border: 1px solid ${({ theme }) => theme.border};
@@ -42,10 +44,9 @@ const Tooltip = styled.div`
   padding: ${({ theme }) => theme.spacing.sm}px;
   font-family: ${({ theme }) => theme.font.mono};
   font-size: 11px;
-  white-space: nowrap;
-  z-index: 10;
-  display: none;
-  ${Cell}:hover & { display: block; }
+  width: max-content;
+  max-width: 220px;
+  z-index: 1000;
 `;
 
 const tierBorder: Record<string, string> = {
@@ -60,11 +61,44 @@ function indexDotColor(iid: string): string {
   return '#6b7280';
 }
 
+const TOOLTIP_MAX_W = 220;
+const TOOLTIP_EST_H = 100;
+const GAP = 6;
+
 export function ChunkCell({ chunk }: { chunk: ChunkInfo }) {
+  const cellRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
   const bg = temperatureToColor(chunk.temperature);
   const border = tierBorder[chunk.tier] ?? tokens.border;
+
+  function handleEnter() {
+    const cell = cellRef.current;
+    if (!cell) return;
+    const rect = cell.getBoundingClientRect();
+    /* Prefer below cell; flip up if it would overflow viewport bottom. */
+    const top = rect.bottom + GAP + TOOLTIP_EST_H > window.innerHeight
+      ? rect.top - GAP - TOOLTIP_EST_H
+      : rect.bottom + GAP;
+    /* Prefer aligned to cell's left; shift left if it would overflow right edge. */
+    const left = rect.left + TOOLTIP_MAX_W > window.innerWidth
+      ? Math.max(GAP, window.innerWidth - TOOLTIP_MAX_W - GAP)
+      : rect.left;
+    setPos({ top, left });
+  }
+
+  function handleLeave() {
+    setPos(null);
+  }
+
   return (
-    <Cell $bg={bg} $border={border}>
+    <Cell
+      ref={cellRef}
+      $bg={bg}
+      $border={border}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+    >
       {chunk.indexes.length > 0 && (
         <Dots>
           {chunk.indexes.slice(0, 8).map((iid) => (
@@ -72,13 +106,16 @@ export function ChunkCell({ chunk }: { chunk: ChunkInfo }) {
           ))}
         </Dots>
       )}
-      <Tooltip>
-        <div>{chunk.chunk_id}</div>
-        <div>tier: {chunk.tier} • state: {chunk.state}</div>
-        <div>count: {chunk.count.toLocaleString()}</div>
-        <div>temp: {chunk.temperature.toFixed(2)}</div>
-        <div>indexes: {chunk.indexes.length}</div>
-      </Tooltip>
+      {pos && createPortal(
+        <Tooltip $top={pos.top} $left={pos.left}>
+          <div>{chunk.chunk_id}</div>
+          <div>tier: {chunk.tier} • state: {chunk.state}</div>
+          <div>count: {chunk.count.toLocaleString()}</div>
+          <div>temp: {chunk.temperature.toFixed(2)}</div>
+          <div>indexes: {chunk.indexes.length}</div>
+        </Tooltip>,
+        document.body,
+      )}
     </Cell>
   );
 }

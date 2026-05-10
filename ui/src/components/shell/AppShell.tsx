@@ -12,7 +12,8 @@ const Layout = styled.div`
 const Main = styled.main`
   flex: 1;
   padding: ${({ theme }) => theme.spacing.xl}px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 `;
 
 export function AppShell() {
