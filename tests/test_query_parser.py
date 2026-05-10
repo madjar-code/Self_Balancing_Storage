@@ -49,3 +49,28 @@ def test_parse_in_list():
 def test_parse_exists():
     q = parse('user_id exists')
     assert q.where.op == PredicateOp.EXISTS
+
+
+def test_parse_gt_produces_range_with_inf_upper_bound():
+    """`ts > 100` becomes a RANGE predicate of (100.0, +inf)."""
+    import math
+    q = parse('ts > 100')
+    assert isinstance(q.where, Predicate)
+    assert q.where.field == "ts"
+    assert q.where.op == PredicateOp.RANGE
+    assert q.where.value == (100.0, math.inf)
+
+
+def test_parse_le_produces_range_with_minus_inf_lower_bound():
+    """`ts <= 200` becomes a RANGE predicate of (-inf, 200.0)."""
+    import math
+    q = parse('ts <= 200')
+    assert q.where.op == PredicateOp.RANGE
+    assert q.where.value == (-math.inf, 200.0)
+
+
+def test_parse_ne_stays_eq_for_now():
+    """`!=`, `=~`, `!~` remain EQ until full negation/regex support lands."""
+    q = parse('service != "auth"')
+    assert q.where.op == PredicateOp.EQ
+    assert q.where.value == "auth"

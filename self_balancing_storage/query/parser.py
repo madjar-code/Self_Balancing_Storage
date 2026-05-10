@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 from typing import Any, Literal
 
 from ..types import Predicate, PredicateOp
@@ -151,14 +152,20 @@ class Parser:
                     self.advance()
             self.consume("RBRACK")
             return Predicate(field=field_tok.value, op=PredicateOp.IN, value=values)
-        # comparison
-        self.consume("OP")
+        """RANGE ops pack into (lo, hi) for matcher and SkipIndex.lookup."""
+        op_tok = self.consume("OP")
         v_tok = self.advance()
         value: Any = v_tok.value
         if v_tok.type == "NUMBER":
             value = float(value)
-        return Predicate(field=field_tok.value, op=PredicateOp.EQ, value=value)
-        # NOTE: simplified - full impl would distinguish !=, =~, !~ via Not wrapping or different op enum
+
+        pred_op = _OP_MAP.get(op_tok.value, PredicateOp.EQ)
+        if pred_op == PredicateOp.RANGE:
+            if op_tok.value in (">", ">="):
+                value = (value, math.inf)
+            else:
+                value = (-math.inf, value)
+        return Predicate(field=field_tok.value, op=pred_op, value=value)
 
     def _parse_last(self) -> tuple[float, float]:
         import time as _time
