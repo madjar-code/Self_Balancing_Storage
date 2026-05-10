@@ -2,6 +2,7 @@ import styled from 'styled-components';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { DecisionsProvider } from '../../context/DecisionsContext';
+import { TimeSeriesProvider } from '../../context/TimeSeriesContext';
 
 const Layout = styled.div`
   display: flex;
@@ -17,12 +18,14 @@ const Main = styled.main`
 export function AppShell() {
   return (
     <DecisionsProvider>
-      <Layout>
-        <Sidebar />
-        <Main>
-          <Outlet />
-        </Main>
-      </Layout>
+      <TimeSeriesProvider>
+        <Layout>
+          <Sidebar />
+          <Main>
+            <Outlet />
+          </Main>
+        </Layout>
+      </TimeSeriesProvider>
     </DecisionsProvider>
   );
 }
