@@ -53,7 +53,7 @@ export default function DecisionsPage() {
           {visible.length} of {decisions.length}
         </span>
       </Bar>
-      <DecisionsFeed decisions={visible} maxItems={500} />
+      <DecisionsFeed decisions={visible} maxItems={500} maxHeight="calc(100vh - 160px)" />
     </div>
   );
 }
