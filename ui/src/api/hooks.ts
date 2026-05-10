@@ -1,6 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { apiGet } from './client';
-import { ChunkInfo, EngineState, IndexInfo, TopPredicate } from './types';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiGet, apiPost } from './client';
+import { ChunkInfo, EngineState, IndexInfo, TopPredicate, QueryResult } from './types';
 
 export function useEngineState() {
   return useQuery({
@@ -35,5 +35,11 @@ export function useTopPredicates() {
     queryFn: () => apiGet<TopPredicate[]>('/tracker/top-predicates'),
     refetchInterval: 3000,
     refetchIntervalInBackground: false,
+  });
+}
+
+export function useRunQuery() {
+  return useMutation({
+    mutationFn: (q: string) => apiPost<QueryResult, { q: string }>('/query', { q }),
   });
 }
