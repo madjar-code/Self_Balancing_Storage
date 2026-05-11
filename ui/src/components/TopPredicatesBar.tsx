@@ -25,11 +25,19 @@ export function TopPredicatesBar({ predicates }: Props) {
         <XAxis type="number" stroke={tokens.text.muted} fontSize={11} />
         <YAxis type="category" dataKey="name" stroke={tokens.text.muted} fontSize={11} width={140} />
         <Tooltip
-          contentStyle={{ background: tokens.bg.elev, border: `1px solid ${tokens.border}` }}
-          labelStyle={{ color: tokens.text.fg }}
-          itemStyle={{ color: tokens.text.fg }}
+          cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          contentStyle={{
+            background: tokens.bg.elev,
+            border: `1px solid ${tokens.border}`,
+            borderRadius: tokens.radius.sm,
+            padding: '4px 8px',
+          }}
+          labelStyle={{ color: tokens.text.fg, fontSize: 12 }}
+          itemStyle={{ color: tokens.text.fg, fontSize: 12 }}
+          separator=" — "
+          formatter={(v: number) => [v, 'freq']}
         />
-        <Bar dataKey="freq" fill={tokens.index.hash} barSize={BAR_HEIGHT - 8} />
+        <Bar dataKey="freq" fill={tokens.index.hash} barSize={BAR_HEIGHT - 8} radius={[0, 2, 2, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
