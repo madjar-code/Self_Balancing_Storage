@@ -503,3 +503,79 @@ def test_plan_index_drops_skips_static_fields():
     dropped_ids = {d.index_id for d in drops}
     assert "c1:hash:service" not in dropped_ids
     assert "c1:hash:tenant" in dropped_ids
+
+
+# === max_hot_chunks (hard cap force-demote) ===
+
+def test_plan_demotes_force_demotes_excess_hot_chunks():
+    """When HOT count exceeds max_hot_chunks, the coldest are force-demoted."""
+    config = Config(max_hot_chunks=2, demote_idle_sec=10**9)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    """5 persisted-HOT chunks. Cap is 2 -> 3 must be force-demoted, coldest first."""
+    for i, t in enumerate([0.9, 0.1, 0.5, 0.3, 0.7]):
+        c = FakeChunk(f"c{i}", tier=Tier.HOT, state="persisted")
+        store.chunks.append(c)  # type: ignore[arg-type]
+    view = base_view(
+        chunk_temperatures={f"c{i}": t for i, t in enumerate([0.9, 0.1, 0.5, 0.3, 0.7])},
+    )
+
+    actions = engine._plan_demotes(view)
+    demoted = {a.chunk_id for a in actions}
+    """c1 (0.1), c3 (0.3), c2 (0.5) are coldest; c0 (0.9) and c4 (0.7) survive."""
+    assert demoted == {"c1", "c3", "c2"}
+
+
+def test_plan_demotes_skips_open_chunks_when_force_demoting():
+    """Open chunks cannot be demoted; the cap pass must skip them entirely."""
+    config = Config(max_hot_chunks=2, demote_idle_sec=10**9)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    """4 HOT: 3 persisted, 1 open. Cap is 2 -> 2 force-demotes among persisted."""
+    chunks = [
+        FakeChunk("c0", tier=Tier.HOT, state="persisted"),
+        FakeChunk("c1", tier=Tier.HOT, state="open"),
+        FakeChunk("c2", tier=Tier.HOT, state="persisted"),
+        FakeChunk("c3", tier=Tier.HOT, state="persisted"),
+    ]
+    for c in chunks:
+        store.chunks.append(c)  # type: ignore[arg-type]
+    view = base_view(
+        chunk_temperatures={"c0": 0.2, "c1": 0.1, "c2": 0.8, "c3": 0.3},
+    )
+
+    actions = engine._plan_demotes(view)
+    demoted = {a.chunk_id for a in actions}
+    """c1 (open) skipped. Among persisted, c0 (0.2) and c3 (0.3) are coldest."""
+    assert demoted == {"c0", "c3"}
+
+
+def test_plan_demotes_no_force_when_under_cap():
+    """If HOT count is at or below cap, no force-demote happens."""
+    config = Config(max_hot_chunks=10, demote_idle_sec=10**9)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(5):
+        c = FakeChunk(f"c{i}", tier=Tier.HOT, state="persisted")
+        store.chunks.append(c)  # type: ignore[arg-type]
+    view = base_view(chunk_temperatures={f"c{i}": 0.1 for i in range(5)})
+
+    actions = engine._plan_demotes(view)
+    assert actions == []
+
+
+def test_plan_demotes_disabled_when_cap_is_zero():
+    """max_hot_chunks=0 disables the hard cap entirely."""
+    config = Config(max_hot_chunks=0, demote_idle_sec=10**9)
+    tracker = AccessTracker(config)
+    store = ChunkStore(config)
+    engine = DecisionEngine(tracker, store, config)
+    for i in range(50):
+        c = FakeChunk(f"c{i}", tier=Tier.HOT, state="persisted")
+        store.chunks.append(c)  # type: ignore[arg-type]
+    view = base_view(chunk_temperatures={f"c{i}": 0.1 for i in range(50)})
+
+    assert engine._plan_demotes(view) == []

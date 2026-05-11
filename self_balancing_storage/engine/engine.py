@@ -349,14 +349,45 @@ class DecisionEngine:
         ]
 
     def _plan_demotes(self, view: TrackerView) -> list[DemoteChunkAction]:
-        # Temperature/idle-driven demotes; memory-pressure demotes come from
-        # plan_memory_relief. Duplicate actions are harmless: _apply_demote
-        # is idempotent on chunks already in COLD.
-        return [
+        """
+        First pass: soft demotes from should_demote_chunk (temp+idle).
+        Second pass: hard cap. If HOT chunks exceed max_hot_chunks after
+        soft demotes, force-demote the coldest persisted ones to bring the
+        count down. Coldness = (temperature, last_access) ascending.
+        """
+        soft = [
             DemoteChunkAction(chunk_id=chunk.header.chunk_id)
             for chunk in self.store.chunks
             if should_demote_chunk(chunk, view, self.config)
         ]
+
+        cap = self.config.max_hot_chunks
+        if cap <= 0:
+            return soft
+
+        soft_ids = {a.chunk_id for a in soft}
+        hot_count = sum(1 for c in self.store.chunks if c.tier == Tier.HOT)
+        excess = hot_count - len(soft) - cap
+        if excess <= 0:
+            return soft
+
+        candidates = sorted(
+            (
+                c for c in self.store.chunks
+                if c.tier == Tier.HOT
+                and c.header.state.value == "persisted"
+                and c.header.chunk_id not in soft_ids
+            ),
+            key=lambda c: (
+                view.chunk_temperatures.get(c.header.chunk_id, 0.0),
+                view.chunk_last_access.get(c.header.chunk_id, 0.0),
+            ),
+        )
+        forced = [
+            DemoteChunkAction(chunk_id=c.header.chunk_id)
+            for c in candidates[:excess]
+        ]
+        return soft + forced
 
     def _expire_dropped(self, now: float) -> None:
         expired = [

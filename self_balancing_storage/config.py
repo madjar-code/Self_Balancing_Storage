@@ -72,9 +72,11 @@ class Config:
     heavy_index_threshold: int = 100 * 1024
     disk_cost_factor: int = 100
     demote_threshold: float = 0.1
-    demote_idle_sec: float = 300.0
+    demote_idle_sec: float = 90.0
     demote_grace_sec: float = 30.0
     promote_threshold: float = 0.5
+    """Hard cap on HOT chunks; 0 disables."""
+    max_hot_chunks: int = 32
 
     # === HTTP API ===
     api_host: str = "0.0.0.0"
