@@ -3,11 +3,19 @@ import { useState } from 'react';
 import { useDecisions } from '../context/DecisionsContext';
 import { DecisionsFeed } from '../components/DecisionsFeed';
 
+const Container = styled.div`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+`;
+
 const Bar = styled.div`
   display: flex;
   gap: ${({ theme }) => theme.spacing.sm}px;
   flex-wrap: wrap;
   margin-bottom: ${({ theme }) => theme.spacing.md}px;
+  flex-shrink: 0;
 `;
 
 const Chip = styled.button<{ $active: boolean }>`
@@ -42,7 +50,7 @@ export default function DecisionsPage() {
     : decisions.filter(d => d.action === active || d.type === active);
 
   return (
-    <div>
+    <Container>
       <Bar>
         {FILTERS.map(f => (
           <Chip key={f.key} $active={active === f.key} onClick={() => setActive(f.key)}>
@@ -53,7 +61,7 @@ export default function DecisionsPage() {
           {visible.length} of {decisions.length}
         </span>
       </Bar>
-      <DecisionsFeed decisions={visible} maxItems={500} maxHeight="calc(100vh - 160px)" />
-    </div>
+      <DecisionsFeed decisions={visible} maxItems={500} fill />
+    </Container>
   );
 }

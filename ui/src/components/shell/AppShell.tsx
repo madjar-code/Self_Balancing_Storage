@@ -6,7 +6,7 @@ import { TimeSeriesProvider } from '../../context/TimeSeriesContext';
 
 const Layout = styled.div`
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
 `;
 
 const Main = styled.main`
@@ -14,6 +14,9 @@ const Main = styled.main`
   padding: ${({ theme }) => theme.spacing.xl}px;
   overflow-x: hidden;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 `;
 
 export function AppShell() {
